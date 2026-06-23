@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: patrimonio_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: patrimonio_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d patrimonio_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    container_name: patrimonio_web
+    entrypoint: ["/app/entrypoint.sh"]
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=django-insecure-local-development-secret-key-12345
+      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/patrimonio_db
+      - JWT_SECRET_KEY=django-insecure-local-development-secret-key-12345
+      - JWT_ACCESS_TOKEN_LIFETIME_MINUTES=60
+      - JWT_REFRESH_TOKEN_LIFETIME_DAYS=7
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
