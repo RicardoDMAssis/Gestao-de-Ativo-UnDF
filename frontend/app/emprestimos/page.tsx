@@ -3,6 +3,7 @@
 import { Layout } from "@/components/Layout";
 import { api } from "@/lib/axios";
 import { useAuth } from "@/store/useAuth";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import {
   useCallback,
   useEffect,
@@ -47,6 +48,7 @@ interface Ativo {
   marca?: string;
   ram?: string;
   armazenamento?: string;
+  sistema_operacional?: string;
 }
 interface Usuario {
   id: string;
@@ -79,6 +81,11 @@ export default function EmprestimosPage() {
   const [novoOpen, setNovoOpen] = useState(false);
   const [devolucaoAlvo, setDevolucaoAlvo] = useState<Emprestimo | null>(null);
   const [detalhesAlvo, setDetalhesAlvo] = useState<any | null>(null);
+  
+  const [aprovarAlvo, setAprovarAlvo] = useState<Emprestimo | null>(null);
+  const [rejeitarAlvo, setRejeitarAlvo] = useState<Emprestimo | null>(null);
+  const [motivoRejeicao, setMotivoRejeicao] = useState("");
+  const [processandoAcao, setProcessandoAcao] = useState(false);
 
   const isServidor = user?.tipo_usuario === "Servidor" || (user as any)?.is_superuser;
 
@@ -111,12 +118,13 @@ export default function EmprestimosPage() {
           nome: d.ativo_detail?.nome || "",
           serial_patrimonio: d.ativo_detail?.serial_patrimonio || "",
           categoria: d.ativo_detail?.categoria === "TI" ? "TI" : d.ativo_detail?.categoria === "Mobiliário" ? "Mobilia" : d.ativo_detail?.categoria === "Veículo" ? "Veiculo" : "Outros",
-          marca: d.ativo_detail?.marca || "",
+          marca: d.ativo_detail?.ti_profile?.marca || d.ativo_detail?.marca || "",
           modelo: d.ativo_detail?.modelo || "",
-          ram: d.ativo_detail?.especificacoes?.ram || "",
-          armazenamento: d.ativo_detail?.especificacoes?.armazenamento || "",
+          ram: d.ativo_detail?.ti_profile?.memoria_ram_gb ? `${d.ativo_detail.ti_profile.memoria_ram_gb} GB` : "",
+          armazenamento: d.ativo_detail?.ti_profile?.armazenamento_gb ? `${d.ativo_detail.ti_profile.armazenamento_gb} GB` : "",
+          sistema_operacional: d.ativo_detail?.ti_profile?.sistema_operacional || "",
           observacoes: d.ativo_detail?.observacoes || "",
-          sala_detail: d.ativo_detail?.sala_detail || null
+          sala_detail: d.ativo_detail?.ti_profile?.sala_detail || d.ativo_detail?.sala_detail || null
         },
         usuario: {
           id: d.usuario_detail?.id || "",
@@ -149,32 +157,42 @@ export default function EmprestimosPage() {
     carregar();
   }, [carregar]);
 
+  useAutoRefresh(carregar, 30000);
+
   useEffect(() => {
     if (!sucesso) return;
     const t = setTimeout(() => setSucesso(null), 4000);
     return () => clearTimeout(t);
   }, [sucesso]);
 
-  const handleAprovar = async (id: string) => {
-    if (!window.confirm("Deseja realmente aprovar esta solicitação de empréstimo?")) return;
+  const handleAprovar = async () => {
+    if (!aprovarAlvo) return;
+    setProcessandoAcao(true);
     try {
-      await api.post(`/emprestimos/${id}/aprovar/`);
+      await api.post(`/emprestimos/${aprovarAlvo.id}/aprovar/`);
       setSucesso("Empréstimo aprovado e ativado com sucesso!");
+      setAprovarAlvo(null);
       carregar();
     } catch (err: any) {
       setErro(err.response?.data?.detail || "Erro ao aprovar solicitação.");
+    } finally {
+      setProcessandoAcao(false);
     }
   };
 
-  const handleRejeitar = async (id: string) => {
-    const motivo = window.prompt("Informe o motivo da rejeição da solicitação:");
-    if (motivo === null) return;
+  const handleRejeitar = async () => {
+    if (!rejeitarAlvo) return;
+    setProcessandoAcao(true);
     try {
-      await api.post(`/emprestimos/${id}/rejeitar/`, { motivo: motivo || "Não especificado" });
+      await api.post(`/emprestimos/${rejeitarAlvo.id}/rejeitar/`, { motivo: motivoRejeicao || "Não especificado" });
       setSucesso("Solicitação de empréstimo rejeitada.");
+      setRejeitarAlvo(null);
+      setMotivoRejeicao("");
       carregar();
     } catch (err: any) {
       setErro(err.response?.data?.detail || "Erro ao rejeitar solicitação.");
+    } finally {
+      setProcessandoAcao(false);
     }
   };
 
@@ -207,7 +225,13 @@ export default function EmprestimosPage() {
         {/* Cabeçalho */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-blue-900">Empréstimos</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl sm:text-3xl font-bold text-blue-900">Empréstimos</h1>
+              <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-250 px-2.5 py-0.5 rounded-full font-semibold shadow-sm mt-1 sm:mt-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Tempo Real
+              </span>
+            </div>
             <p className="text-sm text-slate-600 mt-1">
               Solicite, acompanhe e registre devoluções de ativos patrimoniais.
             </p>
@@ -337,14 +361,14 @@ export default function EmprestimosPage() {
                               <div className="flex justify-end gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={(ev) => { ev.stopPropagation(); handleAprovar(e.id); }}
+                                  onClick={(ev) => { ev.stopPropagation(); setAprovarAlvo(e); }}
                                   className="inline-flex items-center gap-1 bg-green-700 hover:bg-green-800 text-white font-semibold text-xs px-2.5 py-1.5 rounded cursor-pointer"
                                 >
                                   Aprovar
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={(ev) => { ev.stopPropagation(); handleRejeitar(e.id); }}
+                                  onClick={(ev) => { ev.stopPropagation(); setRejeitarAlvo(e); setMotivoRejeicao(""); }}
                                   className="inline-flex items-center gap-1 bg-red-650 hover:bg-red-700 text-white font-semibold text-xs px-2.5 py-1.5 rounded cursor-pointer"
                                 >
                                   Rejeitar
@@ -420,14 +444,14 @@ export default function EmprestimosPage() {
                         <div className="flex gap-2 w-full mt-2">
                           <button
                             type="button"
-                            onClick={(ev) => { ev.stopPropagation(); handleAprovar(e.id); }}
+                            onClick={(ev) => { ev.stopPropagation(); setAprovarAlvo(e); }}
                             className="flex-1 inline-flex items-center justify-center gap-1 bg-green-700 hover:bg-green-800 text-white font-semibold py-2 px-3 rounded text-xs cursor-pointer"
                           >
                             Aprovar
                           </button>
                           <button
                             type="button"
-                            onClick={(ev) => { ev.stopPropagation(); handleRejeitar(e.id); }}
+                            onClick={(ev) => { ev.stopPropagation(); setRejeitarAlvo(e); setMotivoRejeicao(""); }}
                             className="flex-1 inline-flex items-center justify-center gap-1 bg-red-650 hover:bg-red-700 text-white font-semibold py-2 px-3 rounded text-xs cursor-pointer"
                           >
                             Rejeitar
@@ -501,6 +525,103 @@ export default function EmprestimosPage() {
             setDevolucaoAlvo(emp);
           }}
         />
+      )}
+
+      {/* Modal de Aprovação */}
+      {aprovarAlvo && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 bg-emerald-50 border-b border-emerald-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-emerald-900 text-base">Aprovar Empréstimo</h3>
+                <p className="text-emerald-700 text-xs">Confirmar a liberação do ativo para uso</p>
+              </div>
+            </div>
+            <div className="p-6">
+              <p className="text-slate-600 text-sm mb-4">
+                Você está prestes a aprovar o empréstimo do ativo <strong className="text-slate-900">{aprovarAlvo.ativo.nome}</strong> para o usuário <strong className="text-slate-900">{aprovarAlvo.usuario.nome}</strong>.
+              </p>
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-500 mb-6">
+                Uma vez aprovado, o ativo passará para o status <strong>Ativo</strong> (Em Uso) e o aluno será notificado para realizar a retirada.
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setAprovarAlvo(null)}
+                  disabled={processandoAcao}
+                  className="px-4 py-2 border border-slate-200 rounded-lg text-slate-600 text-sm font-semibold hover:bg-slate-50 cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAprovar}
+                  disabled={processandoAcao}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm cursor-pointer disabled:opacity-75"
+                >
+                  {processandoAcao && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Confirmar Aprovação
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Rejeição */}
+      {rejeitarAlvo && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 bg-red-50 border-b border-red-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <ShieldAlert className="w-5 h-5 text-red-650" />
+              </div>
+              <div>
+                <h3 className="font-bold text-red-900 text-base">Rejeitar Solicitação</h3>
+                <p className="text-red-700 text-xs">Informar motivo da não aprovação</p>
+              </div>
+            </div>
+            <div className="p-6">
+              <p className="text-slate-600 text-sm mb-4">
+                Você está rejeitando o pedido de empréstimo do ativo <strong className="text-slate-900">{rejeitarAlvo.ativo.nome}</strong> feito por <strong className="text-slate-900">{rejeitarAlvo.usuario.nome}</strong>.
+              </p>
+              
+              <div className="space-y-1 mb-6">
+                <label className="text-xs font-semibold text-slate-700">Motivo da Rejeição *</label>
+                <textarea
+                  value={motivoRejeicao}
+                  onChange={(e) => setMotivoRejeicao(e.target.value)}
+                  rows={3}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-500 bg-white"
+                  placeholder="Explique ao aluno porque o pedido foi negado..."
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => { setRejeitarAlvo(null); setMotivoRejeicao(""); }}
+                  disabled={processandoAcao}
+                  className="px-4 py-2 border border-slate-200 rounded-lg text-slate-600 text-sm font-semibold hover:bg-slate-50 cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRejeitar}
+                  disabled={processandoAcao || !motivoRejeicao.trim()}
+                  className="px-4 py-2 bg-red-650 hover:bg-red-700 text-white rounded-lg text-sm font-semibold flex items-center gap-2 shadow-sm cursor-pointer disabled:opacity-75"
+                >
+                  {processandoAcao && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Confirmar Rejeição
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </Layout>
   );
@@ -1517,7 +1638,7 @@ function ModalDetalhesEmprestimo({
               <div>
                 <span className="text-xs text-slate-400 block">Especificações Técnicas</span>
                 <span className="font-medium text-slate-700">
-                  {a.ram ? `RAM: ${a.ram}` : ""} {a.armazenamento ? `| Armazenamento: ${a.armazenamento}` : ""} {!a.ram && !a.armazenamento ? "Não especificadas" : ""}
+                  {a.ram ? `RAM: ${a.ram}` : ""} {a.armazenamento ? ` | Armazenamento: ${a.armazenamento}` : ""} {a.sistema_operacional ? ` | S.O.: ${a.sistema_operacional}` : ""} {!a.ram && !a.armazenamento && !a.sistema_operacional ? "Não especificadas" : ""}
                 </span>
               </div>
               {a.sala_detail && (
@@ -1656,17 +1777,17 @@ function ModalDetalhesEmprestimo({
               <>
                 <button
                   type="button"
-                  onClick={() => onAprovar(emprestimo.id)}
-                  className="flex-1 sm:flex-initial bg-green-700 hover:bg-green-800 text-white font-bold py-2.5 px-4 rounded-lg text-sm cursor-pointer transition-colors shadow-sm"
-                >
-                  Aprovar Empréstimo
-                </button>
-                <button
-                  type="button"
                   onClick={() => onRejeitar(emprestimo.id)}
                   className="flex-1 sm:flex-initial bg-red-650 hover:bg-red-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm cursor-pointer transition-colors shadow-sm"
                 >
-                  Rejeitar
+                  Rejeitar Empréstimo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAprovar(emprestimo.id)}
+                  className="flex-1 sm:flex-initial bg-green-700 hover:bg-green-800 text-white font-bold py-2.5 px-6 rounded-lg text-sm cursor-pointer transition-colors shadow-sm"
+                >
+                  Aprovar
                 </button>
               </>
             )}

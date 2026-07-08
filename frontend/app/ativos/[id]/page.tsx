@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Layout } from "@/components/Layout";
 import { api } from "@/lib/axios";
 import { useAuth } from "@/store/useAuth";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import {
   Package,
   Calendar,
@@ -39,25 +40,23 @@ export default function AtivoDetailPage() {
   const [solicitacaoErro, setSolicitacaoErro] = useState<string | null>(null);
   const [solicitacaoSucesso, setSolicitacaoSucesso] = useState(false);
 
-  useEffect(() => {
+  const buscarAtivo = useCallback(async () => {
     if (!id) return;
-
-    const buscarAtivo = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await api.get(`/ativos/${id}/`);
-        setAtivo(response.data);
-      } catch (err: any) {
-        console.error("Erro ao buscar ativo:", err);
-        setError("Não foi possível carregar as informações deste ativo.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    buscarAtivo();
+    try {
+      const response = await api.get(`/ativos/${id}/`);
+      setAtivo(response.data);
+    } catch (err: any) {
+      console.error("Erro ao buscar ativo:", err);
+      setError("Não foi possível carregar as informações deste ativo.");
+    }
   }, [id]);
+
+  useEffect(() => {
+    setLoading(true);
+    buscarAtivo().finally(() => setLoading(false));
+  }, [buscarAtivo]);
+
+  useAutoRefresh(buscarAtivo, 60000);
 
   const handleSolicitar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,12 +135,18 @@ export default function AtivoDetailPage() {
     <Layout>
       <div className="max-w-5xl mx-auto space-y-6 pb-12">
         {/* Breadcrumb e Ação de Voltar */}
-        <button
-          onClick={() => router.back()}
-          className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> Voltar para o Catálogo
-        </button>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <button
+            onClick={() => router.back()}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> Voltar para o Catálogo
+          </button>
+          <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-250 px-2.5 py-0.5 rounded-full font-semibold shadow-sm">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Tempo Real (60s)
+          </span>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
           {/* Coluna 1: Imagem */}
@@ -150,6 +155,9 @@ export default function AtivoDetailPage() {
               src={ativo.imagem_url || fallbackImg}
               alt={ativo.nome}
               className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.src = fallbackImg;
+              }}
             />
             <div className="absolute top-4 left-4 flex gap-2">
               <span className={`px-3 py-1 rounded-full text-xs font-bold shadow-sm ${
@@ -239,7 +247,9 @@ export default function AtivoDetailPage() {
                   <div>
                     <span className="text-xs text-zinc-400 block">Setor de Origem</span>
                     <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
-                      {ativo.setor_detail?.nome || "Sem setor"}
+                      {ativo.setor_detail 
+                        ? `${ativo.setor_detail.tipo} (${ativo.setor_detail.campus_detail?.sigla || ""})` 
+                        : "Sem setor"}
                     </span>
                   </div>
                 </div>

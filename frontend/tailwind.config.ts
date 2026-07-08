@@ -62,7 +62,11 @@ const config: Config = {
           grayLight: '#F7FAFC',
           gray: '#E2E8F0',
           grayDark: '#4A5568',
-        }
+        },
+        red: { 650: '#cb2121' },
+        green: { 705: '#15803d' },
+        slate: { 650: '#3f4c62' },
+        zinc: { 350: '#bbbbc1', 550: '#61616a', 650: '#484850' }
       },
       borderRadius: {
         lg: "var(--radius)",

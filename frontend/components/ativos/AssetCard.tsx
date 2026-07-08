@@ -60,6 +60,9 @@ export const AssetCard: React.FC<AssetCardProps> = ({ ativo, modoAdmin = false, 
           alt={nome}
           className={styles.cardImage}
           loading="lazy"
+          onError={(e) => {
+            e.currentTarget.src = fallbackImg;
+          }}
         />
         <div className={styles.cardBadges}>
           <span className={`${styles.statusBadge} ${getStatusClass(status)}`}>

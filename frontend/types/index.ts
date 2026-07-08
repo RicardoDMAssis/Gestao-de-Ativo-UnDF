@@ -1,4 +1,4 @@
-export type StatusAtivo = 'Novo' | 'Avariado' | 'Desempossado' | 'Emprestado';
+export type StatusAtivo = 'Novo' | 'Avariado' | 'Desempossado' | 'Emprestado' | 'Disponivel' | 'Em_Uso';
 
 export interface AtivoTI {
   marca: string;

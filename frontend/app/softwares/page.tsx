@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { api } from "@/lib/axios";
 import { useAuth } from "@/store/useAuth";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import {
   Monitor,
   Plus,
@@ -75,6 +76,11 @@ export default function SoftwaresPage() {
   const [solicAtivoBusca, setSolicAtivoBusca] = useState("");
   const [solicObservacao, setSolicObservacao] = useState("");
 
+  // Estados de Detalhes da Solicitação (Servidor)
+  const [detalheSolic, setDetalheSolic] = useState<any | null>(null);
+  const [detalheSolicNotebooks, setDetalheSolicNotebooks] = useState<any[]>([]);
+  const [carregandoNotebooks, setCarregandoNotebooks] = useState(false);
+
   const isServidor = user?.tipo_usuario === "Servidor" || (user as any)?.is_superuser;
   const isProfessor = user?.tipo_usuario === "Professor";
 
@@ -105,6 +111,8 @@ export default function SoftwaresPage() {
   useEffect(() => {
     carregarDados();
   }, []);
+
+  useAutoRefresh(carregarDados, 30000);
 
   // CRUD Software
   const handleCreateSoftware = async (e: React.FormEvent) => {
@@ -245,6 +253,22 @@ export default function SoftwaresPage() {
     }
   };
 
+  const handleOpenDetalhes = async (solic: any) => {
+    setDetalheSolic(solic);
+    setDetalheSolicNotebooks([]);
+    if (solic.sala) {
+      setCarregandoNotebooks(true);
+      try {
+        const res = await api.get(`/ativos-ti/?sala=${solic.sala}`);
+        setDetalheSolicNotebooks(res.data.results || res.data || []);
+      } catch (err) {
+        console.error("Erro ao buscar notebooks da sala:", err);
+      } finally {
+        setCarregandoNotebooks(false);
+      }
+    }
+  };
+
   // Filtros
   const filteredSoftwares = softwares.filter((s) => {
     const query = searchSoftwareQuery.toLowerCase();
@@ -328,10 +352,16 @@ export default function SoftwaresPage() {
         {/* Cabeçalho */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-5">
           <div>
-            <h1 className="text-3xl font-extrabold text-blue-900 dark:text-blue-400 flex items-center gap-2">
-              <Monitor className="w-8 h-8 text-blue-900 dark:text-blue-400" />
-              SAM — Gestão de Softwares & Licenças
-            </h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-3xl font-extrabold text-blue-900 dark:text-blue-400 flex items-center gap-2">
+                <Monitor className="w-8 h-8 text-blue-900 dark:text-blue-400" />
+                SAM — Gestão de Softwares & Licenças
+              </h1>
+              <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-250 px-2.5 py-0.5 rounded-full font-semibold shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Tempo Real
+              </span>
+            </div>
             <p className="text-slate-600 dark:text-zinc-400 text-sm mt-1">
               {isServidor
                 ? "Controle licenças, implantações de ativos e atenda a chamados de laboratórios da UnDF."
@@ -744,7 +774,11 @@ export default function SoftwaresPage() {
                         const solicitante = solic.solicitante_detail?.nome || `Usuário ${solic.solicitante}`;
                         
                         return (
-                          <tr key={solic.id} className="hover:bg-slate-50/50">
+                          <tr 
+                            key={solic.id} 
+                            onClick={() => handleOpenDetalhes(solic)}
+                            className="hover:bg-slate-50/50 cursor-pointer"
+                          >
                             <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-zinc-200">{softwareName}</td>
                             <td className="py-3.5 px-4 text-xs font-semibold text-blue-900">{dest}</td>
                             <td className="py-3.5 px-4 text-slate-700">{solicitante}</td>
@@ -754,26 +788,25 @@ export default function SoftwaresPage() {
                             <td className="py-3.5 px-4">{labelStatusSolicitacao(solic.status)}</td>
                             {isServidor && (
                               <td className="py-3.5 px-4 text-right">
-                                {solic.status === "Pendente" ? (
-                                  <div className="flex gap-2 justify-end">
+                                <div className="flex gap-2 justify-end">
+                                  {solic.status === "Pendente" && (
                                     <button
-                                      onClick={() => handleProcessarSolicitacao(solic.id, true)}
+                                      onClick={(e) => { e.stopPropagation(); handleProcessarSolicitacao(solic.id, true); }}
                                       className="bg-green-700 hover:bg-green-800 text-white font-semibold text-xs px-2.5 py-1.5 rounded cursor-pointer flex items-center gap-1"
                                       title="Aprovar e Instalar"
                                     >
                                       <Check className="w-3.5 h-3.5" /> Aprovar
                                     </button>
-                                    <button
-                                      onClick={() => handleProcessarSolicitacao(solic.id, false)}
-                                      className="bg-red-650 hover:bg-red-700 text-white font-semibold text-xs px-2.5 py-1.5 rounded cursor-pointer flex items-center gap-1"
-                                      title="Rejeitar"
-                                    >
-                                      <Ban className="w-3.5 h-3.5" /> Rejeitar
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <span className="text-xs text-slate-400">—</span>
-                                )}
+                                  )}
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleProcessarSolicitacao(solic.id, false); }}
+                                    disabled={solic.status === "Rejeitada"}
+                                    className="bg-red-650 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-xs px-2.5 py-1.5 rounded cursor-pointer flex items-center gap-1"
+                                    title="Rejeitar"
+                                  >
+                                    <Ban className="w-3.5 h-3.5" /> Rejeitar
+                                  </button>
+                                </div>
                               </td>
                             )}
                           </tr>
@@ -791,7 +824,11 @@ export default function SoftwaresPage() {
                     ? `Sala: ${solic.sala_detail?.tipo} ${solic.sala_detail?.numero}`
                     : `Máquina: ${solic.ativo_ti_detail?.ativo_detail?.nome || solic.ativo_ti}`;
                   return (
-                    <li key={solic.id} className="p-4 flex flex-col gap-3">
+                    <li 
+                      key={solic.id} 
+                      onClick={() => handleOpenDetalhes(solic)}
+                      className="p-4 flex flex-col gap-3 cursor-pointer hover:bg-slate-50"
+                    >
                       <div className="flex justify-between items-center">
                         <span className="font-bold text-slate-800 text-sm">{solic.software_detail?.nome}</span>
                         {labelStatusSolicitacao(solic.status)}
@@ -811,17 +848,20 @@ export default function SoftwaresPage() {
                           " {solic.observacao} "
                         </p>
                       )}
-                      {isServidor && solic.status === "Pendente" && (
+                      {isServidor && (
                         <div className="flex gap-2 w-full">
+                          {solic.status === "Pendente" && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleProcessarSolicitacao(solic.id, true); }}
+                              className="flex-1 bg-green-700 hover:bg-green-800 text-white font-semibold text-xs py-2 rounded text-center cursor-pointer"
+                            >
+                              Aprovar
+                            </button>
+                          )}
                           <button
-                            onClick={() => handleProcessarSolicitacao(solic.id, true)}
-                            className="flex-1 bg-green-700 hover:bg-green-800 text-white font-semibold text-xs py-2 rounded text-center cursor-pointer"
-                          >
-                            Aprovar
-                          </button>
-                          <button
-                            onClick={() => handleProcessarSolicitacao(solic.id, false)}
-                            className="flex-1 bg-red-650 hover:bg-red-700 text-white font-semibold text-xs py-2 rounded text-center cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); handleProcessarSolicitacao(solic.id, false); }}
+                            disabled={solic.status === "Rejeitada"}
+                            className="flex-1 bg-red-650 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-xs py-2 rounded text-center cursor-pointer"
                           >
                             Rejeitar
                           </button>
@@ -1203,6 +1243,162 @@ export default function SoftwaresPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DETALHES DA SOLICITAÇÃO (Servidor) */}
+      {detalheSolic && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-slate-200 dark:border-zinc-800 w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 bg-slate-50 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 flex justify-between items-center">
+              <h3 className="font-bold text-slate-800 dark:text-zinc-100 text-base">Detalhes da Solicitação</h3>
+              <button
+                onClick={() => setDetalheSolic(null)}
+                className="text-slate-400 hover:text-slate-650 dark:hover:text-zinc-300 text-xl font-medium cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Software</span>
+                  <span className="font-bold text-slate-800 dark:text-zinc-100 block text-sm">
+                    {detalheSolic.software_detail?.nome || detalheSolic.software}
+                  </span>
+                  <span className="text-xs text-slate-500 block">
+                    Fabricante: {detalheSolic.software_detail?.fabricante || "—"}
+                  </span>
+                </div>
+                
+                <div className="space-y-1.5">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Solicitante</span>
+                  <span className="font-semibold text-slate-800 dark:text-zinc-200 block text-sm">
+                    {detalheSolic.solicitante_detail?.nome || `Usuário ${detalheSolic.solicitante}`}
+                  </span>
+                  <span className="text-xs text-slate-500 block">
+                    Matrícula: {detalheSolic.solicitante_detail?.matricula || "—"} · Email: {detalheSolic.solicitante_detail?.email || "—"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 dark:border-zinc-800 pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Destino da Instalação</span>
+                  {detalheSolic.sala ? (
+                    <span className="font-semibold text-blue-900 dark:text-blue-450 block text-sm">
+                      Sala: {detalheSolic.sala_detail?.tipo} {detalheSolic.sala_detail?.numero} ({detalheSolic.sala_detail?.campus_detail?.sigla || ''})
+                    </span>
+                  ) : (
+                    <div className="space-y-0.5">
+                      <span className="font-semibold text-blue-900 dark:text-blue-450 block text-sm">
+                        Máquina: {detalheSolic.ativo_ti_detail?.ativo_detail?.nome || detalheSolic.ativo_ti}
+                      </span>
+                      <span className="text-xs text-slate-500 block">
+                        Patr: {detalheSolic.ativo_ti_detail?.ativo_detail?.serial_patrimonio || '—'} · Marca: {detalheSolic.ativo_ti_detail?.marca || '—'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Status da Solicitação</span>
+                  <div className="mt-1">
+                    {labelStatusSolicitacao(detalheSolic.status)}
+                  </div>
+                </div>
+              </div>
+
+              {detalheSolic.observacao && (
+                <div className="bg-slate-50 dark:bg-zinc-800/40 p-3 rounded-lg border border-slate-150 dark:border-zinc-800 text-xs">
+                  <span className="font-bold text-slate-500 block mb-1">Justificativa do Solicitante:</span>
+                  <p className="text-slate-700 dark:text-zinc-300 italic">"{detalheSolic.observacao}"</p>
+                </div>
+              )}
+
+              {/* LISTA DE NOTEBOOKS DA SALA */}
+              {detalheSolic.sala && (
+                <div className="border-t border-slate-150 dark:border-zinc-800 pt-4 space-y-3">
+                  <h4 className="text-xs font-bold text-blue-900 dark:text-blue-450 uppercase tracking-wider flex items-center gap-1.5">
+                    <Laptop className="w-4 h-4" />
+                    Notebooks alocados na Sala ({detalheSolicNotebooks.length})
+                  </h4>
+                  
+                  {carregandoNotebooks ? (
+                    <div className="py-8 flex justify-center items-center gap-2 text-slate-400">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span className="text-xs">Buscando computadores...</span>
+                    </div>
+                  ) : detalheSolicNotebooks.length === 0 ? (
+                    <p className="text-xs text-slate-450 italic py-2">Nenhum computador cadastrado nesta sala.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto pr-1">
+                      {detalheSolicNotebooks.map((nb) => {
+                        const nbName = nb.ativo_detail?.nome || `Notebook ${nb.ativo}`;
+                        const nbSerial = nb.ativo_detail?.serial_patrimonio || "Sem Patrimônio";
+                        return (
+                          <div
+                            key={nb.ativo}
+                            className="bg-slate-50 dark:bg-zinc-850 p-2.5 rounded-lg border border-slate-200 dark:border-zinc-800 text-xs flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex justify-between items-start gap-1">
+                                <span className="font-bold text-slate-800 dark:text-zinc-200 truncate">{nbName}</span>
+                                <span className="font-mono font-bold text-[9px] bg-slate-200/60 dark:bg-zinc-700 text-slate-700 dark:text-zinc-300 px-1.5 py-0.5 rounded shrink-0">
+                                  {nbSerial}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 dark:text-zinc-400 mt-1.5 space-y-0.5">
+                                <p>Marca: {nb.marca || "—"} · S.O.: {nb.sistema_operacional || "—"}</p>
+                                <p>RAM: {nb.memoria_ram_gb ? `${nb.memoria_ram_gb} GB` : "—"} · Armaz: {nb.armazenamento_gb ? `${nb.armazenamento_gb} GB` : "—"}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-800 flex justify-between items-center">
+              <div className="flex gap-2">
+                {detalheSolic.status === "Pendente" && isServidor && (
+                  <button
+                    onClick={() => {
+                      setDetalheSolic(null);
+                      handleProcessarSolicitacao(detalheSolic.id, true);
+                    }}
+                    className="bg-green-700 hover:bg-green-800 text-white font-semibold text-xs px-3 py-2 rounded cursor-pointer flex items-center gap-1.5 transition-colors shadow-sm"
+                  >
+                    <Check className="w-4 h-4" /> Aprovar
+                  </button>
+                )}
+                {isServidor && (
+                  <button
+                    onClick={() => {
+                      setDetalheSolic(null);
+                      handleProcessarSolicitacao(detalheSolic.id, false);
+                    }}
+                    disabled={detalheSolic.status === "Rejeitada"}
+                    className="bg-red-650 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-xs px-3 py-2 rounded cursor-pointer flex items-center gap-1.5 transition-colors shadow-sm"
+                  >
+                    <Ban className="w-4 h-4" /> Rejeitar
+                  </button>
+                )}
+              </div>
+              
+              <button
+                type="button"
+                onClick={() => setDetalheSolic(null)}
+                className="px-4 py-2 border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-650 dark:text-zinc-300 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}

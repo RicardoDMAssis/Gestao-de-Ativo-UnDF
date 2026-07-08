@@ -135,7 +135,9 @@ export const AssetCatalog: React.FC = () => {
         categoria: d.categoria,
         status: d.status,
         setor_id: String(d.setor),
-        setor_nome: d.setor_detail?.nome || d.setor_detail?.tipo || "Sem Setor",
+        setor_nome: d.setor_detail 
+          ? `${d.setor_detail.tipo} (${d.setor_detail.campus_detail?.sigla || ""})` 
+          : "Sem Setor",
         responsavel_id: String(d.responsavel),
         responsavel_nome: d.responsavel_detail?.usuario?.nome || "Sem Responsável",
         imagem_url: d.imagem_url || undefined,
