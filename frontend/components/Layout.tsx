@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/store/useAuth";
 import { api } from "@/lib/axios";
-import { LogOut, UserCircle2, Loader2, Package, Calendar, BookOpen, Building2, Monitor, AlertCircle, Info, CheckCircle } from "lucide-react";
+import { LogOut, UserCircle2, Loader2, Package, Calendar, BookOpen, Building2, Monitor, AlertCircle, Info, CheckCircle, Users } from "lucide-react";
 import { UnDFLogo } from "@/components/UnDFLogo";
 import Link from "next/link";
 
@@ -98,7 +98,10 @@ export function Layout({ children }: LayoutProps) {
   }
 
   const getNavItems = () => {
-    const items = [{ name: "Catálogo", href: "/ativos", icon: Package }];
+    const items = [
+      { name: "Catálogo", href: "/ativos", icon: Package },
+      { name: "Corpo Acadêmico", href: "/corpo-academico", icon: Users }
+    ];
 
     if (user.tipo_usuario === "Aluno") {
       items.push(

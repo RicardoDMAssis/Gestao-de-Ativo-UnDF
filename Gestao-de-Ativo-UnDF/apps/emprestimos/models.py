@@ -65,3 +65,33 @@ class Emprestimo(TimestampedModel):
 
     def __str__(self):
         return f"Empréstimo {self.id} - Ativo: {self.ativo.serial_patrimonio} - Status: {self.status}"
+
+
+class FilaEmprestimo(TimestampedModel):
+    ativo = models.ForeignKey(
+        Ativo,
+        on_delete=models.CASCADE,
+        db_column='ativo_id',
+        related_name='fila_espera'
+    )
+    usuario = models.ForeignKey(
+        Usuario,
+        on_delete=models.CASCADE,
+        db_column='usuario_id',
+        related_name='filas_espera'
+    )
+
+    class Meta:
+        db_table = 'filas_emprestimo'
+        ordering = ['created_at']
+        verbose_name = 'Fila de Empréstimo'
+        verbose_name_plural = 'Filas de Empréstimo'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ativo', 'usuario'],
+                name='uq_fila_ativo_usuario'
+            )
+        ]
+
+    def __str__(self):
+        return f"Fila do Ativo {self.ativo.serial_patrimonio} - Usuário: {self.usuario.nome}"

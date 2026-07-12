@@ -87,7 +87,7 @@ export default function EmprestimosPage() {
   const [motivoRejeicao, setMotivoRejeicao] = useState("");
   const [processandoAcao, setProcessandoAcao] = useState(false);
 
-  const isServidor = user?.tipo_usuario === "Servidor" || (user as any)?.is_superuser;
+  const isServidor = user?.tipo_usuario === "Servidor" || !!user?.servidor_profile || (user as any)?.is_superuser;
 
   // Debounce da busca
   useEffect(() => {

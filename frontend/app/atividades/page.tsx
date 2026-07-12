@@ -53,8 +53,8 @@ export default function AtividadesPage() {
   const [dataFim, setDataFim] = useState("");
   const [numeroProcesso, setNumeroProcesso] = useState("");
 
-  const isProfessorOrServidor = user?.tipo_usuario === "Servidor" || user?.tipo_usuario === "Professor" || (user as any)?.is_superuser;
-  const isServidor = user?.tipo_usuario === "Servidor" || (user as any)?.is_superuser;
+  const isServidor = user?.tipo_usuario === "Servidor" || !!user?.servidor_profile || (user as any)?.is_superuser;
+  const isProfessorOrServidor = isServidor || user?.tipo_usuario === "Professor" || !!user?.professor_profile;
 
   const carregarDadosFiltros = async () => {
     try {

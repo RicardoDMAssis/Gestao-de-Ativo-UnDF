@@ -10,7 +10,7 @@ class IsServidor(permissions.BasePermission):
             return False
         if request.user.is_superuser:
             return True
-        return request.user.tipo_usuario == TipoUsuario.SERVIDOR
+        return getattr(request.user, 'is_servidor', False)
 
 
 class IsProfessor(permissions.BasePermission):
@@ -21,7 +21,7 @@ class IsProfessor(permissions.BasePermission):
         return (
             request.user and 
             request.user.is_authenticated and 
-            request.user.tipo_usuario == TipoUsuario.PROFESSOR
+            getattr(request.user, 'is_professor', False)
         )
 
 
@@ -33,5 +33,5 @@ class IsAluno(permissions.BasePermission):
         return (
             request.user and 
             request.user.is_authenticated and 
-            request.user.tipo_usuario == TipoUsuario.ALUNO
+            getattr(request.user, 'is_aluno', False)
         )

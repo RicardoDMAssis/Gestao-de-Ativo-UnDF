@@ -6,14 +6,9 @@ from apps.usuarios.models import Servidor
 
 
 class StatusAtivo(models.TextChoices):
-    # Valores alinhados com o DBML (status_ativo_enum)
     NOVO = 'Novo', 'Novo'
-    AVARIADO = 'Avariado', 'Avariado'          # era Em_Manutencao — alinhado com DBML
-    DESEMPOSSADO = 'Desempossado', 'Desempossado'  # era Baixado — alinhado com DBML
-    EMPRESTADO = 'Emprestado', 'Emprestado'
-    # Valores extras necessários para o fluxo de negócio (não conflitam com o DBML)
-    EM_USO = 'Em_Uso', 'Em Uso'
-    DISPONIVEL = 'Disponivel', 'Disponível'
+    AVARIADO = 'Avariado', 'Avariado'
+    DESEMPOSSADO = 'Desempossado', 'Desempossado'
 
 
 class Ativo(TimestampedModel):
@@ -28,6 +23,7 @@ class Ativo(TimestampedModel):
         choices=StatusAtivo.choices,
         default=StatusAtivo.NOVO
     )
+    emprestado = models.BooleanField(default=False)
     elegivel_emprestimo = models.BooleanField(default=False)
     setor = models.ForeignKey(
         Setor,
@@ -92,6 +88,8 @@ class Software(TimestampedModel):
     nome = models.CharField(max_length=255)
     fabricante = models.CharField(max_length=255)
     total_licencas_compradas = models.IntegerField(default=0)
+    imagem_url = models.TextField(null=True, blank=True)
+    storage_key = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = 'softwares'

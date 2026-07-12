@@ -24,7 +24,8 @@ import {
   Ban,
   Building,
   User,
-  PlusCircle
+  PlusCircle,
+  Edit
 } from "lucide-react";
 
 export default function SoftwaresPage() {
@@ -43,6 +44,8 @@ export default function SoftwaresPage() {
 
   // Expanded card state
   const [expandedSoftwares, setExpandedSoftwares] = useState<Record<number, boolean>>({});
+  const [computerSubTab, setComputerSubTab] = useState<"salas" | "avulsos">("salas");
+  const [expandedSalaId, setExpandedSalaId] = useState<number | null>(null);
 
   // Searches
   const [searchSoftwareQuery, setSearchSoftwareQuery] = useState("");
@@ -56,6 +59,8 @@ export default function SoftwaresPage() {
   const [softwareNome, setSoftwareNome] = useState("");
   const [softwareFabricante, setSoftwareFabricante] = useState("");
   const [licencas, setLicencas] = useState(1);
+  const [editingSoftware, setEditingSoftware] = useState<any | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Form Instalacao Direta state (Server only)
   const [modalInstalacaoOpen, setModalInstalacaoOpen] = useState(false);
@@ -81,8 +86,8 @@ export default function SoftwaresPage() {
   const [detalheSolicNotebooks, setDetalheSolicNotebooks] = useState<any[]>([]);
   const [carregandoNotebooks, setCarregandoNotebooks] = useState(false);
 
-  const isServidor = user?.tipo_usuario === "Servidor" || (user as any)?.is_superuser;
-  const isProfessor = user?.tipo_usuario === "Professor";
+  const isServidor = user?.tipo_usuario === "Servidor" || !!user?.servidor_profile || (user as any)?.is_superuser;
+  const isProfessor = user?.tipo_usuario === "Professor" || !!user?.professor_profile;
 
   const carregarDados = async () => {
     setLoading(true);
@@ -115,6 +120,16 @@ export default function SoftwaresPage() {
   useAutoRefresh(carregarDados, 30000);
 
   // CRUD Software
+  const handleOpenEditSoftware = (s: any) => {
+    setEditingSoftware(s);
+    setSoftwareNome(s.nome);
+    setSoftwareFabricante(s.fabricante);
+    setLicencas(s.total_licencas_compradas);
+    setSelectedFile(null);
+    setErrorSoftware(null);
+    setModalSoftwareOpen(true);
+  };
+
   const handleCreateSoftware = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmittingSoftware(true);
@@ -125,17 +140,41 @@ export default function SoftwaresPage() {
         throw new Error("Preencha todos os campos obrigatórios.");
       }
 
-      await api.post("/softwares/", {
-        nome: softwareNome,
-        fabricante: softwareFabricante,
-        total_licencas_compradas: licencas
-      });
+      let softwareId = null;
+
+      if (editingSoftware) {
+        softwareId = editingSoftware.id;
+        await api.patch(`/softwares/${softwareId}/`, {
+          nome: softwareNome,
+          fabricante: softwareFabricante,
+          total_licencas_compradas: licencas
+        });
+      } else {
+        const response = await api.post("/softwares/", {
+          nome: softwareNome,
+          fabricante: softwareFabricante,
+          total_licencas_compradas: licencas
+        });
+        softwareId = response.data.id;
+      }
+
+      if (selectedFile && softwareId) {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        await api.post(`/softwares/${softwareId}/upload-imagem/`, formData, {
+          headers: {
+            "Content-Type": "multipart/form-data"
+          }
+        });
+      }
 
       setModalSoftwareOpen(false);
       setSoftwareNome("");
       setSoftwareFabricante("");
       setLicencas(1);
-      setSucesso("Software cadastrado com sucesso!");
+      setSelectedFile(null);
+      setEditingSoftware(null);
+      setSucesso(editingSoftware ? "Software editado com sucesso!" : "Software cadastrado com sucesso!");
       carregarDados();
     } catch (err: any) {
       setErrorSoftware(err.response?.data?.detail || err.message || "Erro ao salvar.");
@@ -372,6 +411,11 @@ export default function SoftwaresPage() {
             {isServidor && activeTab === "softwares" && (
               <button
                 onClick={() => {
+                  setEditingSoftware(null);
+                  setSoftwareNome("");
+                  setSoftwareFabricante("");
+                  setLicencas(1);
+                  setSelectedFile(null);
                   setErrorSoftware(null);
                   setModalSoftwareOpen(true);
                 }}
@@ -527,8 +571,12 @@ export default function SoftwaresPage() {
                     >
                       <div>
                         <div className="flex items-start justify-between">
-                          <div className="bg-primary/5 text-primary p-2.5 rounded-xl">
-                            <Monitor className="w-5 h-5" />
+                          <div className="bg-primary/5 text-primary p-2.5 rounded-xl w-[60px] h-[60px] flex items-center justify-center overflow-hidden">
+                            {s.imagem_url ? (
+                              <img src={s.imagem_url} alt={s.nome} className="w-full h-full object-contain" />
+                            ) : (
+                              <Monitor className="w-[30px] h-[30px]" />
+                            )}
                           </div>
                           <span
                             className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${
@@ -613,7 +661,7 @@ export default function SoftwaresPage() {
                       </div>
 
                       {/* Ações Rápidas por Usuário */}
-                      <div className="mt-5 pt-3 border-t border-slate-100 dark:border-zinc-800">
+                      <div className="mt-5 pt-3 border-t border-slate-100 dark:border-zinc-800 flex gap-2">
                         {isProfessor && remaining > 0 && (
                           <button
                             onClick={() => {
@@ -631,6 +679,15 @@ export default function SoftwaresPage() {
                             Solicitar Instalação
                           </button>
                         )}
+                        {isServidor && (
+                          <button
+                            onClick={() => handleOpenEditSoftware(s)}
+                            className="w-full inline-flex justify-center items-center gap-1.5 border border-slate-200 dark:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 font-semibold py-2 px-4 rounded-xl text-xs cursor-pointer"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                            Editar Software
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -639,108 +696,283 @@ export default function SoftwaresPage() {
             </div>
           ) : activeTab === "instalar" ? (
             /* TAB 2: COMPUTARES E SOFTWARES INSTALADOS */
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {filteredComputersTab.length === 0 ? (
-                <div className="col-span-full py-16 text-center text-slate-400 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl">
-                  Nenhum computador de TI localizado.
-                </div>
-              ) : (
-                filteredComputersTab.map((a) => {
-                  const computerId = String(a.ativo_detail?.id || a.ativo || a.ativo_id || "");
-                  const computerName = a.ativo_detail?.nome || a.ativo?.nome || "Computador";
-                  const computerSerial = a.ativo_detail?.serial_patrimonio || a.ativo?.serial_patrimonio || "Sem Patrimônio";
-                  const computerBrand = a.marca || "Desconhecido";
-                  const computerSO = a.sistema_operacional || "SO não informado";
-                  const computerRAM = a.memoria_ram_gb ? `${a.memoria_ram_gb}GB` : "";
-                  const computerStorage = a.armazenamento_gb ? `${a.armazenamento_gb}GB` : "";
-                  const salaName = a.sala_detail ? `${a.sala_detail.tipo} ${a.sala_detail.numero} (${a.sala_detail.campus_detail?.sigla || ''})` : null;
+            <div className="flex flex-col gap-6">
+              {/* Sub-tabs para Salas e Avulsos */}
+              <div className="flex gap-2 border-b border-slate-100 dark:border-zinc-800 pb-2">
+                <button
+                  onClick={() => setComputerSubTab("salas")}
+                  className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                    computerSubTab === "salas"
+                      ? "bg-blue-900 text-white dark:bg-blue-500"
+                      : "text-slate-650 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  Por Salas (Laboratórios)
+                </button>
+                <button
+                  onClick={() => setComputerSubTab("avulsos")}
+                  className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                    computerSubTab === "avulsos"
+                      ? "bg-blue-900 text-white dark:bg-blue-500"
+                      : "text-slate-650 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  Computadores Avulsos
+                </button>
+              </div>
 
-                  const compInstalls = instalacoes.filter(
-                    (ins) => String(ins.ativo_ti) === computerId || String(ins.ativo_ti_detail?.ativo_detail?.id) === computerId
-                  );
+              {computerSubTab === "salas" ? (
+                /* SUB-TAB: SALAS */
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {salas.length === 0 ? (
+                    <div className="col-span-full py-16 text-center text-slate-400 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl">
+                      Nenhuma sala localizada.
+                    </div>
+                  ) : (
+                    salas.map((sala) => {
+                      const pcsInSala = filteredComputersTab.filter(
+                        (pc) => String(pc.sala) === String(sala.id) || String(pc.sala_detail?.id) === String(sala.id)
+                      );
+                      const isExpanded = expandedSalaId === sala.id;
 
-                  return (
-                    <div
-                      key={computerId}
-                      className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm hover:shadow transition-all duration-200 flex flex-col justify-between"
-                    >
-                      <div>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h3 className="font-bold text-slate-800 dark:text-zinc-100 text-base truncate">
-                              {computerName}
-                            </h3>
-                            <span className="inline-block font-mono text-[10px] font-bold bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 px-2 py-0.5 rounded mt-1">
-                              Patr: {computerSerial}
-                            </span>
-                            {salaName && (
-                              <span className="block text-xs font-semibold text-blue-900 mt-1">
-                                Local: {salaName}
-                              </span>
-                            )}
+                      return (
+                        <div
+                          key={sala.id}
+                          className={`col-span-full bg-white dark:bg-zinc-900 border ${
+                            isExpanded ? "border-blue-900 dark:border-blue-400 ring-1 ring-blue-900" : "border-slate-200 dark:border-zinc-800"
+                          } rounded-2xl p-5 shadow-sm transition-all duration-200`}
+                        >
+                          <div
+                            onClick={() => setExpandedSalaId(isExpanded ? null : sala.id)}
+                            className="flex items-center justify-between cursor-pointer"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="bg-blue-50 dark:bg-zinc-800 text-blue-900 dark:text-blue-400 p-2.5 rounded-xl">
+                                <Building className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-slate-800 dark:text-zinc-100 text-base">
+                                  {sala.tipo} {sala.numero}
+                                </h3>
+                                <p className="text-xs text-slate-550 dark:text-zinc-400 font-medium">
+                                  Campus: {sala.campus_detail?.sigla || "N/A"} · {pcsInSala.length} {pcsInSala.length === 1 ? "computador" : "computadores"}
+                                </p>
+                              </div>
+                            </div>
+                            <div>
+                              {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                            </div>
                           </div>
-                          <div className="bg-primary/5 text-primary p-2.5 rounded-xl shrink-0">
-                            <Laptop className="w-5 h-5" />
-                          </div>
-                        </div>
 
-                        <div className="mt-3.5 flex flex-wrap gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-zinc-400 font-medium">
-                          <span>{computerBrand}</span>
-                          <span>·</span>
-                          <span>{computerSO}</span>
-                          {computerRAM && (
-                            <>
-                              <span>·</span>
-                              <span>{computerRAM} RAM</span>
-                            </>
-                          )}
-                          {computerStorage && (
-                            <>
-                              <span>·</span>
-                              <span>{computerStorage} SSD</span>
-                            </>
-                          )}
-                        </div>
+                          {isExpanded && (
+                            <div className="mt-6 pt-6 border-t border-slate-100 dark:border-zinc-800">
+                              {pcsInSala.length === 0 ? (
+                                <p className="text-xs text-slate-400 italic text-center py-4">
+                                  Nenhum computador cadastrado ou localizado nesta sala com os filtros atuais.
+                                </p>
+                              ) : (
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                  {pcsInSala.map((a) => {
+                                    const computerId = String(a.ativo_detail?.id || a.ativo || a.ativo_id || "");
+                                    const computerName = a.ativo_detail?.nome || a.ativo?.nome || "Computador";
+                                    const computerSerial = a.ativo_detail?.serial_patrimonio || a.ativo?.serial_patrimonio || "Sem Patrimônio";
+                                    const computerBrand = a.marca || "Desconhecido";
+                                    const computerSO = a.sistema_operacional || "SO não informado";
+                                    const computerRAM = a.memoria_ram_gb ? `${a.memoria_ram_gb}GB` : "";
+                                    const computerStorage = a.armazenamento_gb ? `${a.armazenamento_gb}GB` : "";
 
-                        <div className="mt-6">
-                          <h4 className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider mb-2">
-                            Softwares Instalados ({compInstalls.length})
-                          </h4>
-                          {compInstalls.length === 0 ? (
-                            <p className="text-xs text-slate-400 italic">Nenhum software instalado.</p>
-                          ) : (
-                            <div className="flex flex-wrap gap-1.5 mt-2">
-                              {compInstalls.map((ins) => {
-                                const sName = ins.software_detail?.nome || `Software ${ins.software}`;
-                                return (
-                                  <span
-                                    key={ins.id}
-                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 border border-slate-200 dark:bg-zinc-800 dark:border-zinc-700 text-xs font-semibold text-slate-700 dark:text-zinc-300"
-                                  >
-                                    <HardDrive className="w-3.5 h-3.5 text-slate-400" />
-                                    {sName}
-                                  </span>
-                                );
-                              })}
+                                    const compInstalls = instalacoes.filter(
+                                      (ins) => String(ins.ativo_ti) === computerId || String(ins.ativo_ti_detail?.ativo_detail?.id) === computerId
+                                    );
+
+                                    return (
+                                      <div
+                                        key={computerId}
+                                        className="bg-slate-50 dark:bg-zinc-800/40 border border-slate-200 dark:border-zinc-800/70 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between"
+                                      >
+                                        <div>
+                                          <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                              <h4 className="font-bold text-slate-800 dark:text-zinc-100 text-sm truncate">
+                                                {computerName}
+                                              </h4>
+                                              <span className="inline-block font-mono text-[9px] font-bold bg-slate-100 dark:bg-zinc-850 text-slate-700 dark:text-zinc-300 px-2 py-0.5 rounded mt-1">
+                                                Patr: {computerSerial}
+                                              </span>
+                                            </div>
+                                            <div className="bg-primary/5 text-primary p-2 rounded-lg shrink-0">
+                                              <Laptop className="w-4 h-4" />
+                                            </div>
+                                          </div>
+
+                                          <div className="mt-2.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-550 dark:text-zinc-400 font-medium">
+                                            <span>{computerBrand}</span>
+                                            <span>·</span>
+                                            <span>{computerSO}</span>
+                                            {computerRAM && (
+                                              <>
+                                                <span>·</span>
+                                                <span>{computerRAM} RAM</span>
+                                              </>
+                                            )}
+                                            {computerStorage && (
+                                              <>
+                                                <span>·</span>
+                                                <span>{computerStorage} SSD</span>
+                                              </>
+                                            )}
+                                          </div>
+
+                                          <div className="mt-4">
+                                            <h5 className="text-[10px] font-bold text-slate-650 dark:text-zinc-350 uppercase tracking-wider mb-1.5">
+                                              Softwares Instalados ({compInstalls.length})
+                                            </h5>
+                                            {compInstalls.length === 0 ? (
+                                              <p className="text-[11px] text-slate-400 italic">Nenhum software instalado.</p>
+                                            ) : (
+                                              <div className="flex flex-wrap gap-1 mt-1">
+                                                {compInstalls.map((ins) => {
+                                                  const sName = ins.software_detail?.nome || `Software ${ins.software}`;
+                                                  return (
+                                                    <span
+                                                      key={ins.id}
+                                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-slate-200 dark:bg-zinc-800 dark:border-zinc-700 text-[10px] font-semibold text-slate-750 dark:text-zinc-300"
+                                                    >
+                                                      <HardDrive className="w-3 h-3 text-slate-400" />
+                                                      {sName}
+                                                    </span>
+                                                  );
+                                                })}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {isServidor && (
+                                          <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-zinc-800/80">
+                                            <button
+                                              onClick={() => openInstalarModal(computerId, computerName, computerSerial)}
+                                              className="w-full flex items-center justify-center gap-1.5 border border-slate-200 dark:border-zinc-700 bg-white hover:bg-slate-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-primary dark:text-zinc-300 font-semibold py-1.5 px-3 rounded-lg text-[11px] transition-colors cursor-pointer"
+                                            >
+                                              <Plus className="w-3 h-3" />
+                                              Instalar Software
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
-                      </div>
-
-                      {isServidor && (
-                        <div className="mt-6 pt-3 border-t border-slate-100 dark:border-zinc-800">
-                          <button
-                            onClick={() => openInstalarModal(computerId, computerName, computerSerial)}
-                            className="w-full flex items-center justify-center gap-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 hover:bg-slate-100 dark:bg-zinc-900 dark:hover:bg-zinc-800/80 text-primary dark:text-zinc-300 font-semibold py-2 px-4 rounded-xl text-xs transition-colors cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            Instalar Software
-                          </button>
-                        </div>
-                      )}
+                      );
+                    })
+                  )}
+                </div>
+              ) : (
+                /* SUB-TAB: AVULSOS */
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {filteredComputersTab.filter((pc) => !pc.sala && !pc.sala_detail).length === 0 ? (
+                    <div className="col-span-full py-16 text-center text-slate-400 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl">
+                      Nenhum computador de TI avulso localizado.
                     </div>
-                  );
-                })
+                  ) : (
+                    filteredComputersTab
+                      .filter((pc) => !pc.sala && !pc.sala_detail)
+                      .map((a) => {
+                        const computerId = String(a.ativo_detail?.id || a.ativo || a.ativo_id || "");
+                        const computerName = a.ativo_detail?.nome || a.ativo?.nome || "Computador";
+                        const computerSerial = a.ativo_detail?.serial_patrimonio || a.ativo?.serial_patrimonio || "Sem Patrimônio";
+                        const computerBrand = a.marca || "Desconhecido";
+                        const computerSO = a.sistema_operacional || "SO não informado";
+                        const computerRAM = a.memoria_ram_gb ? `${a.memoria_ram_gb}GB` : "";
+                        const computerStorage = a.armazenamento_gb ? `${a.armazenamento_gb}GB` : "";
+
+                        const compInstalls = instalacoes.filter(
+                          (ins) => String(ins.ativo_ti) === computerId || String(ins.ativo_ti_detail?.ativo_detail?.id) === computerId
+                        );
+
+                        return (
+                          <div
+                            key={computerId}
+                            className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm hover:shadow transition-all duration-200 flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <h3 className="font-bold text-slate-800 dark:text-zinc-100 text-base truncate">
+                                    {computerName}
+                                  </h3>
+                                  <span className="inline-block font-mono text-[10px] font-bold bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 px-2 py-0.5 rounded mt-1">
+                                    Patr: {computerSerial}
+                                  </span>
+                                </div>
+                                <div className="bg-primary/5 text-primary p-2.5 rounded-xl shrink-0">
+                                  <Laptop className="w-5 h-5" />
+                                </div>
+                              </div>
+
+                              <div className="mt-3.5 flex flex-wrap gap-x-2 gap-y-1 text-xs text-slate-550 dark:text-zinc-400 font-medium">
+                                <span>{computerBrand}</span>
+                                <span>·</span>
+                                <span>{computerSO}</span>
+                                {computerRAM && (
+                                  <>
+                                    <span>·</span>
+                                    <span>{computerRAM} RAM</span>
+                                  </>
+                                )}
+                                {computerStorage && (
+                                  <>
+                                    <span>·</span>
+                                    <span>{computerStorage} SSD</span>
+                                  </>
+                                )}
+                              </div>
+
+                              <div className="mt-6">
+                                <h4 className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider mb-2">
+                                  Softwares Instalados ({compInstalls.length})
+                                </h4>
+                                {compInstalls.length === 0 ? (
+                                  <p className="text-xs text-slate-400 italic">Nenhum software instalado.</p>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1.5 mt-2">
+                                    {compInstalls.map((ins) => {
+                                      const sName = ins.software_detail?.nome || `Software ${ins.software}`;
+                                      return (
+                                        <span
+                                          key={ins.id}
+                                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-50 border border-slate-200 dark:bg-zinc-800 dark:border-zinc-700 text-xs font-semibold text-slate-700 dark:text-zinc-300"
+                                        >
+                                          <HardDrive className="w-3.5 h-3.5 text-slate-400" />
+                                          {sName}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {isServidor && (
+                              <div className="mt-6 pt-3 border-t border-slate-100 dark:border-zinc-800">
+                                <button
+                                  onClick={() => openInstalarModal(computerId, computerName, computerSerial)}
+                                  className="w-full flex items-center justify-center gap-2 border border-slate-200 dark:border-zinc-800 bg-slate-50 hover:bg-slate-100 dark:bg-zinc-900 dark:hover:bg-zinc-800/80 text-primary dark:text-zinc-300 font-semibold py-2 px-4 rounded-xl text-xs transition-colors cursor-pointer"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  Instalar Software
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
               )}
             </div>
           ) : (
@@ -881,7 +1113,9 @@ export default function SoftwaresPage() {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-slate-200 dark:border-zinc-800 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-slate-50 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 flex justify-between items-center">
-              <h3 className="font-bold text-slate-800 dark:text-zinc-100 text-base">Adicionar Novo Software</h3>
+              <h3 className="font-bold text-slate-800 dark:text-zinc-100 text-base">
+                {editingSoftware ? "Editar Software" : "Adicionar Novo Software"}
+              </h3>
               <button
                 onClick={() => setModalSoftwareOpen(false)}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300 text-xl font-medium cursor-pointer"
@@ -928,6 +1162,21 @@ export default function SoftwaresPage() {
                   className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-zinc-900 outline-none focus:border-primary text-foreground"
                 />
               </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300">
+                  Imagem do Software (PNG ou SVG)
+                </label>
+                <input
+                  type="file"
+                  accept="image/png, image/svg+xml"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      setSelectedFile(e.target.files[0]);
+                    }
+                  }}
+                  className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-zinc-800 dark:file:text-zinc-300 cursor-pointer"
+                />
+              </div>
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100 dark:border-zinc-800 mt-6">
                 <button
                   type="button"
@@ -941,8 +1190,8 @@ export default function SoftwaresPage() {
                   disabled={submittingSoftware}
                   className="px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-lg text-sm font-semibold flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
-                  {submittingSoftware && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Salvar
+                  {submittingSoftware && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {editingSoftware ? "Salvar Alterações" : "Cadastrar Software"}
                 </button>
               </div>
             </form>

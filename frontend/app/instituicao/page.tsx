@@ -51,7 +51,7 @@ export default function InstituicaoPage() {
   const [selectedCampusId, setSelectedCampusId] = useState("");
   const [selectedEscolaId, setSelectedEscolaId] = useState("");
 
-  const isServidor = user?.tipo_usuario === "Servidor" || (user as any)?.is_superuser;
+  const isServidor = user?.tipo_usuario === "Servidor" || !!user?.servidor_profile || (user as any)?.is_superuser;
 
   const carregarDados = async () => {
     setLoading(true);

@@ -10,6 +10,95 @@ import { useAuth } from '@/store/useAuth';
 import { Plus, Settings, X, Edit, Trash2, Cpu, MapPin, Loader2, AlertCircle, Check, Package } from 'lucide-react';
 import styles from '@/styles/AssetCatalog.module.css';
 
+interface SearchableSelectProps {
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  onSearch: (term: string) => Promise<{ id: string | number; name: string }[]>;
+  initialName?: string;
+  placeholder: string;
+}
+
+function SearchableSelect({ label, value, onChange, placeholder, onSearch, initialName }: SearchableSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [options, setOptions] = useState<{ id: string | number; name: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (initialName) {
+      setSearchTerm(initialName);
+    } else {
+      setSearchTerm("");
+    }
+  }, [value, initialName]);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const results = await onSearch(searchTerm);
+        setOptions(results);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm, onSearch]);
+
+  return (
+    <div className="flex flex-col gap-1 relative">
+      <label className="text-xs font-bold uppercase text-zinc-450">{label}</label>
+      <div className="relative">
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setIsOpen(true);
+            if (!e.target.value) {
+              onChange("");
+            }
+          }}
+          onFocus={() => setIsOpen(true)}
+          onBlur={() => {
+            setTimeout(() => setIsOpen(false), 200);
+          }}
+          className="w-full border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3.5 py-2 text-sm outline-none focus:border-blue-500 text-foreground"
+          placeholder={placeholder}
+        />
+        {isOpen && (
+          <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg z-50">
+            {loading ? (
+              <div className="px-3.5 py-2 text-xs text-zinc-400 italic">Carregando...</div>
+            ) : options.length === 0 ? (
+              <div className="px-3.5 py-2 text-xs text-zinc-400 italic">Nenhum resultado encontrado</div>
+            ) : (
+              options.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(String(o.id));
+                    setSearchTerm(o.name);
+                    setIsOpen(false);
+                  }}
+                  className="w-full text-left px-3.5 py-2 text-sm hover:bg-slate-50 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 transition-colors"
+                >
+                  {o.name}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export const AssetCatalog: React.FC = () => {
   const { user } = useAuth();
   
@@ -17,9 +106,10 @@ export const AssetCatalog: React.FC = () => {
   const [filtros, setFiltros] = useState({
     busca: '',
     categoria: 'todas',
-    status: 'todos',
+    status: 'disponiveis',
     setor_id: 'todos',
     responsavel_id: 'todos',
+    ordenacao: 'nome',
   });
   
   const [ativos, setAtivos] = useState<Ativo[]>([]);
@@ -49,6 +139,37 @@ export const AssetCatalog: React.FC = () => {
   const [formSetor, setFormSetor] = useState("");
   const [formElegivel, setFormElegivel] = useState(false);
   const [formStatus, setFormStatus] = useState("Novo");
+  const [formResponsavelNome, setFormResponsavelNome] = useState("");
+  const [formSetorNome, setFormSetorNome] = useState("");
+
+  const fetchResponsaveis = async (busca: string) => {
+    const res = await api.get('/usuarios/', {
+      params: {
+        tipo_usuario: 'Servidor',
+        search: busca,
+        page_size: 50
+      }
+    });
+    const data = res.data.results || res.data || [];
+    return data.map((u: any) => ({
+      id: String(u.id),
+      name: u.nome
+    }));
+  };
+
+  const fetchSetores = async (busca: string) => {
+    const res = await api.get('/setores/', {
+      params: {
+        search: busca,
+        page_size: 50
+      }
+    });
+    const data = res.data.results || res.data || [];
+    return data.map((s: any) => ({
+      id: String(s.id),
+      name: s.nome || `${s.tipo} (${s.campus_detail?.sigla || ''})`
+    }));
+  };
   
   // Especificações de TI
   const [formMarca, setFormMarca] = useState("");
@@ -66,7 +187,7 @@ export const AssetCatalog: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null);
 
   const ITENS_POR_PAGINA = 6;
-  const isServidor = user?.tipo_usuario === 'Servidor' || (user as any)?.is_superuser;
+  const isServidor = user?.tipo_usuario === 'Servidor' || !!user?.servidor_profile || (user as any)?.is_superuser;
 
   // 2. Carregar metadados dos filtros e salas
   const carregarMetadados = async () => {
@@ -121,6 +242,7 @@ export const AssetCatalog: React.FC = () => {
       if (filtros.status !== 'todos') params.set('status', filtros.status);
       if (filtros.setor_id !== 'todos') params.set('setor', filtros.setor_id);
       if (filtros.responsavel_id !== 'todos') params.set('responsavel', filtros.responsavel_id);
+      if (filtros.ordenacao) params.set('ordering', filtros.ordenacao);
 
       const response = await api.get(`/ativos/?${params.toString()}`);
       const data = response.data;
@@ -191,7 +313,9 @@ export const AssetCatalog: React.FC = () => {
     setFormDescricao("");
     setFormCategoria("Mobiliário");
     setFormResponsavel(responsaveis[0]?.id || "");
+    setFormResponsavelNome(responsaveis[0]?.nome || "");
     setFormSetor(setores[0]?.id || "");
+    setFormSetorNome(setores[0]?.nome || "");
     setFormElegivel(false);
     setFormStatus("Novo");
     setFormMarca("");
@@ -213,7 +337,9 @@ export const AssetCatalog: React.FC = () => {
     setFormDescricao(ativo.descricao || "");
     setFormCategoria(ativo.categoria);
     setFormResponsavel(ativo.responsavel_id);
+    setFormResponsavelNome(ativo.responsavel_nome);
     setFormSetor(ativo.setor_id);
+    setFormSetorNome(ativo.setor_nome);
     // @ts-ignore
     setFormElegivel(ativo.elegivel_emprestimo ?? false);
     setFormStatus(ativo.status);
@@ -410,6 +536,24 @@ export const AssetCatalog: React.FC = () => {
             <span className={styles.resultsCount}>
               {carregando ? 'Buscando...' : `${totalItens} ${totalItens === 1 ? 'ativo encontrado' : 'ativos encontrados'}`}
             </span>
+            <div className="flex items-center gap-2">
+              <label htmlFor="ordenacao-select" className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+                Ordenar por:
+              </label>
+              <select
+                id="ordenacao-select"
+                value={filtros.ordenacao}
+                onChange={(e) => handleFiltrosChange({ ...filtros, ordenacao: e.target.value })}
+                className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2.5 py-1 text-xs font-semibold text-zinc-700 dark:text-zinc-250 outline-none focus:ring-2 focus:ring-blue-950/20 cursor-pointer"
+              >
+                <option value="nome">Nome (A-Z)</option>
+                <option value="-nome">Nome (Z-A)</option>
+                <option value="categoria">Categoria</option>
+                <option value="status">Status</option>
+                <option value="-created_at">Mais Recentes</option>
+                <option value="created_at">Mais Antigos</option>
+              </select>
+            </div>
             {pagina > 1 && (
               <span className={styles.pageIndicator}>
                 Página {pagina} de {totalPaginas}
@@ -689,34 +833,24 @@ export const AssetCatalog: React.FC = () => {
                 </div>
 
                 {/* Responsável */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold uppercase text-zinc-450">Servidor Responsável *</label>
-                  <select
-                    value={formResponsavel}
-                    onChange={(e) => setFormResponsavel(e.target.value)}
-                    className="w-full border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3.5 py-2 text-sm outline-none focus:border-blue-500"
-                  >
-                    <option value="" disabled>Selecione um Servidor</option>
-                    {responsaveis.map((r) => (
-                      <option key={r.id} value={r.id}>{r.nome}</option>
-                    ))}
-                  </select>
-                </div>
+                <SearchableSelect
+                  label="Servidor Responsável *"
+                  value={formResponsavel}
+                  onChange={setFormResponsavel}
+                  onSearch={fetchResponsaveis}
+                  initialName={formResponsavelNome}
+                  placeholder="Selecione ou digite um Servidor..."
+                />
 
                 {/* Setor */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold uppercase text-zinc-450">Setor Alocado *</label>
-                  <select
-                    value={formSetor}
-                    onChange={(e) => setFormSetor(e.target.value)}
-                    className="w-full border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3.5 py-2 text-sm outline-none focus:border-blue-500"
-                  >
-                    <option value="" disabled>Selecione um Setor</option>
-                    {setores.map((s) => (
-                      <option key={s.id} value={s.id}>{s.nome}</option>
-                    ))}
-                  </select>
-                </div>
+                <SearchableSelect
+                  label="Setor Alocado *"
+                  value={formSetor}
+                  onChange={setFormSetor}
+                  onSearch={fetchSetores}
+                  initialName={formSetorNome}
+                  placeholder="Selecione ou digite um Setor..."
+                />
 
                 {/* Status e Elegível para Empréstimo */}
                 <div className="grid grid-cols-2 gap-4">

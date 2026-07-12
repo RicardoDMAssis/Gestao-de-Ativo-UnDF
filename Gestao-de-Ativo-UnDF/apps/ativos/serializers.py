@@ -12,7 +12,7 @@ from apps.instituicao.models import Setor
 # imagem_url e storage_key são gerenciados exclusivamente via /upload_imagem/.
 ATIVO_CRUD_FIELDS = [
     'id', 'serial_patrimonio', 'nome', 'descricao', 'especificacao_tecnica',
-    'etiquetado', 'categoria', 'status', 'elegivel_emprestimo',
+    'etiquetado', 'categoria', 'status', 'emprestado', 'elegivel_emprestimo',
     'setor', 'responsavel', 'created_at', 'updated_at',
 ]
 
@@ -21,10 +21,22 @@ class AtivoSerializer(serializers.ModelSerializer):
     setor_detail = SetorSerializer(source='setor', read_only=True)
     responsavel_detail = ServidorSerializer(source='responsavel', read_only=True)
     ti_profile = serializers.SerializerMethodField()
+    fila_espera_count = serializers.SerializerMethodField()
+    usuario_na_fila_posicao = serializers.SerializerMethodField()
+    devolucao_prevista = serializers.SerializerMethodField()
 
     class Meta:
         model = Ativo
-        fields = ATIVO_CRUD_FIELDS + ['imagem_url', 'setor_detail', 'responsavel_detail', 'ti_profile']
+        fields = ATIVO_CRUD_FIELDS + [
+            'imagem_url', 'setor_detail', 'responsavel_detail', 'ti_profile',
+            'fila_espera_count', 'usuario_na_fila_posicao', 'devolucao_prevista'
+        ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if hasattr(instance, 'ti_profile') and instance.ti_profile and instance.ti_profile.sala and instance.ti_profile.sala.tipo == 'Laboratorio':
+            data['elegivel_emprestimo'] = False
+        return data
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_ti_profile(self, obj):
@@ -44,6 +56,31 @@ class AtivoSerializer(serializers.ModelSerializer):
                 } if obj.ti_profile.sala else None,
                 'created_at': obj.ti_profile.created_at,
             }
+        return None
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_fila_espera_count(self, obj):
+        return obj.fila_espera.count()
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_usuario_na_fila_posicao(self, obj):
+        request = self.context.get('request')
+        if request and request.user and request.user.is_authenticated:
+            entry = obj.fila_espera.filter(usuario=request.user).first()
+            if entry:
+                all_entries = list(obj.fila_espera.all().order_by('created_at'))
+                try:
+                    return all_entries.index(entry) + 1
+                except ValueError:
+                    return None
+        return None
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_devolucao_prevista(self, obj):
+        from apps.emprestimos.models import Emprestimo, StatusEmprestimo
+        active_loan = obj.emprestimos.filter(status=StatusEmprestimo.ATIVO).order_by('-created_at').first()
+        if active_loan and active_loan.data_devolucao_prevista:
+            return active_loan.data_devolucao_prevista.isoformat()
         return None
 
 
@@ -132,6 +169,10 @@ class SoftwareSerializer(serializers.ModelSerializer):
     class Meta:
         model = Software
         fields = '__all__'
+
+
+class SoftwareImageUploadSerializer(serializers.Serializer):
+    file = serializers.FileField()
 
 
 class InstalacaoSoftwareSerializer(serializers.ModelSerializer):

@@ -91,12 +91,54 @@ class SupabaseStorageService:
         return public_url, storage_key
 
     @staticmethod
-    def delete_imagem(storage_key: str) -> None:
+    def upload_perfil(file, user_id: int) -> tuple[str, str]:
+        """
+        Faz upload de uma foto de perfil para o Supabase Storage.
+        """
+        content_type = getattr(file, 'content_type', None) or mimetypes.guess_type(file.name)[0]
+        if content_type not in ALLOWED_MIME_TYPES:
+            raise BusinessValidationError(
+                f"Tipo de arquivo não permitido: '{content_type}'. "
+                f"Permitidos: {', '.join(ALLOWED_MIME_TYPES)}."
+            )
+
+        file.seek(0, 2)
+        file_size = file.tell()
+        file.seek(0)
+        if file_size > MAX_FILE_SIZE_BYTES:
+            raise BusinessValidationError(
+                f"Arquivo muito grande: {file_size / 1024 / 1024:.1f} MB. "
+                f"Máximo permitido: {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB."
+            )
+
+        extension = file.name.rsplit('.', 1)[-1].lower() if '.' in file.name else 'jpg'
+        storage_key = f"perfis/{user_id}/{uuid.uuid4().hex}.{extension}"
+
+        client = _get_supabase_client()
+        bucket = 'fotos-perfil'
+
+        try:
+            client.storage.from_(bucket).upload(
+                path=storage_key,
+                file=file.read(),
+                file_options={"content-type": content_type, "upsert": "false"},
+            )
+        except Exception as exc:
+            raise BusinessValidationError(
+                f"Falha no upload para o Supabase Storage: {exc}"
+            )
+
+        public_url = SupabaseStorageService.get_public_url(storage_key, bucket=bucket)
+        return public_url, storage_key
+
+    @staticmethod
+    def delete_imagem(storage_key: str, bucket: str = None) -> None:
         """
         Remove uma imagem do Supabase Storage.
 
         Args:
             storage_key: caminho relativo no bucket (conforme retornado por upload_imagem).
+            bucket: nome do bucket (se omitido, usa SUPABASE_STORAGE_BUCKET)
 
         Silencia erros de arquivo não encontrado (idempotente).
         """
@@ -104,7 +146,8 @@ class SupabaseStorageService:
             return
 
         client = _get_supabase_client()
-        bucket = settings.SUPABASE_STORAGE_BUCKET
+        if not bucket:
+            bucket = settings.SUPABASE_STORAGE_BUCKET
 
         try:
             client.storage.from_(bucket).remove([storage_key])
@@ -113,17 +156,60 @@ class SupabaseStorageService:
             pass
 
     @staticmethod
-    def get_public_url(storage_key: str) -> str:
+    def get_public_url(storage_key: str, bucket: str = None) -> str:
         """
         Retorna a URL pública de um objeto no Supabase Storage.
 
         Args:
             storage_key: caminho relativo no bucket.
+            bucket: nome do bucket (se omitido, usa SUPABASE_STORAGE_BUCKET)
 
         Returns:
             URL pública como string.
-        """
+            """
         client = _get_supabase_client()
-        bucket = settings.SUPABASE_STORAGE_BUCKET
+        if not bucket:
+            bucket = settings.SUPABASE_STORAGE_BUCKET
         response = client.storage.from_(bucket).get_public_url(storage_key)
         return response
+
+    @staticmethod
+    def upload_software_imagem(file, software_id: int) -> tuple[str, str]:
+        """
+        Faz upload de uma imagem (png ou svg) de software para o Supabase Storage.
+        """
+        content_type = getattr(file, 'content_type', None) or mimetypes.guess_type(file.name)[0]
+        allowed_types = ['image/png', 'image/svg+xml']
+        if content_type not in allowed_types:
+            raise BusinessValidationError(
+                f"Tipo de arquivo não permitido: '{content_type}'. "
+                f"Permitidos: PNG e SVG."
+            )
+
+        file.seek(0, 2)
+        file_size = file.tell()
+        file.seek(0)
+        if file_size > MAX_FILE_SIZE_BYTES:
+            raise BusinessValidationError(
+                f"Arquivo muito grande. Máximo permitido: 5 MB."
+            )
+
+        extension = file.name.rsplit('.', 1)[-1].lower() if '.' in file.name else 'png'
+        storage_key = f"softwares/{software_id}/{uuid.uuid4().hex}.{extension}"
+
+        client = _get_supabase_client()
+        bucket = 'fotos-softwares'
+
+        try:
+            client.storage.from_(bucket).upload(
+                path=storage_key,
+                file=file.read(),
+                file_options={"content-type": content_type, "upsert": "false"},
+            )
+        except Exception as exc:
+            raise BusinessValidationError(
+                f"Falha no upload para o Supabase Storage: {exc}"
+            )
+
+        public_url = SupabaseStorageService.get_public_url(storage_key, bucket=bucket)
+        return public_url, storage_key

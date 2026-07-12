@@ -49,10 +49,12 @@ export const AssetCard: React.FC<AssetCardProps> = ({ ativo, modoAdmin = false, 
     router.push(`/ativos/${id}`);
   };
 
+  const isIndisponivel = ativo.emprestado;
+
   return (
     <article 
       onClick={handleCardClick}
-      className={`${styles.card} ${isTI ? styles.cardTI : ''} cursor-pointer hover:shadow-md transition-shadow relative group`}
+      className={`${styles.card} ${isTI ? styles.cardTI : ''} ${isIndisponivel ? 'opacity-75 saturate-50 border-red-200/60 dark:border-red-950/40 bg-zinc-50/50 dark:bg-zinc-950/20' : ''} cursor-pointer hover:shadow-md transition-all relative group`}
     >
       <div className={styles.cardImageWrapper}>
         <img
@@ -68,6 +70,11 @@ export const AssetCard: React.FC<AssetCardProps> = ({ ativo, modoAdmin = false, 
           <span className={`${styles.statusBadge} ${getStatusClass(status)}`}>
             {status}
           </span>
+          {ativo.elegivel_emprestimo && ativo.emprestado && (
+            <span className="bg-amber-600 dark:bg-amber-800 text-white text-[9px] font-bold px-2 py-0.5 rounded shadow-sm">
+              Emprestado
+            </span>
+          )}
           <span className={styles.categoryTag}>{categoria}</span>
         </div>
 
@@ -99,7 +106,18 @@ export const AssetCard: React.FC<AssetCardProps> = ({ ativo, modoAdmin = false, 
       </div>
 
       <div className={styles.cardContent}>
-        <span className={styles.serialPatrimonio}>{serial_patrimonio}</span>
+        <span 
+          className={styles.serialPatrimonio}
+          style={{
+            color: isTI 
+              ? (ativo.emprestado ? '#000000' : '#15803d') 
+              : '#000000'
+          }}
+        >
+          {isTI 
+            ? (ativo.emprestado ? 'indisponivel' : 'disponivel') 
+            : serial_patrimonio}
+        </span>
         <h4 className={styles.cardTitle} title={nome}>
           {nome}
         </h4>

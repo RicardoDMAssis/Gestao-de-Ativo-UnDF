@@ -51,6 +51,9 @@ class Usuario(AbstractBaseUser, PermissionsMixin, TimestampedModel):
     matricula = models.CharField(max_length=50, unique=True)
     tipo_usuario = models.CharField(max_length=50, choices=TipoUsuario.choices)
     ativo = models.BooleanField(default=True)
+    nome_social = models.CharField(max_length=255, null=True, blank=True)
+    foto_url = models.TextField(null=True, blank=True)
+    foto_storage_key = models.TextField(null=True, blank=True)
     
     # Campos necessários para o Django Admin e Auth
     is_staff = models.BooleanField(default=False)
@@ -71,15 +74,15 @@ class Usuario(AbstractBaseUser, PermissionsMixin, TimestampedModel):
 
     @property
     def is_aluno(self):
-        return self.tipo_usuario == TipoUsuario.ALUNO
+        return self.tipo_usuario == TipoUsuario.ALUNO or hasattr(self, 'aluno_profile')
 
     @property
     def is_professor(self):
-        return self.tipo_usuario == TipoUsuario.PROFESSOR
+        return self.tipo_usuario == TipoUsuario.PROFESSOR or hasattr(self, 'professor_profile')
 
     @property
     def is_servidor(self):
-        return self.tipo_usuario == TipoUsuario.SERVIDOR
+        return self.tipo_usuario == TipoUsuario.SERVIDOR or hasattr(self, 'servidor_profile')
 
     def get_servidor_profile(self):
         try:

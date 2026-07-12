@@ -19,14 +19,21 @@ class SimpleServidorSerializer(serializers.ModelSerializer):
         fields = ['cargo', 'setor', 'setor_detail']
 
 
+class SimpleProfessorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Professor
+        fields = ['regime_trabalho']
+
+
 class UsuarioSerializer(serializers.ModelSerializer):
     aluno_detail = serializers.SerializerMethodField()
     servidor_detail = serializers.SerializerMethodField()
+    professor_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = Usuario
-        fields = ['id', 'nome', 'email', 'matricula', 'tipo_usuario', 'ativo', 'is_superuser', 'aluno_detail', 'servidor_detail', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['id', 'nome', 'nome_social', 'email', 'matricula', 'tipo_usuario', 'ativo', 'is_superuser', 'foto_url', 'foto_storage_key', 'aluno_detail', 'servidor_detail', 'professor_detail', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'foto_url', 'foto_storage_key', 'created_at', 'updated_at']
 
     def get_aluno_detail(self, obj):
         if hasattr(obj, 'aluno_profile'):
@@ -38,6 +45,11 @@ class UsuarioSerializer(serializers.ModelSerializer):
             return SimpleServidorSerializer(obj.servidor_profile).data
         return None
 
+    def get_professor_detail(self, obj):
+        if hasattr(obj, 'professor_profile'):
+            return SimpleProfessorSerializer(obj.professor_profile).data
+        return None
+
 
 class UsuarioCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False, style={'input_type': 'password'})
@@ -47,7 +59,8 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Usuario
-        fields = ['id', 'nome', 'email', 'matricula', 'tipo_usuario', 'ativo', 'password', 'aluno_profile', 'professor_profile', 'servidor_profile']
+        fields = ['id', 'nome', 'nome_social', 'email', 'matricula', 'tipo_usuario', 'ativo', 'password', 'foto_url', 'foto_storage_key', 'aluno_profile', 'professor_profile', 'servidor_profile']
+        read_only_fields = ['foto_url', 'foto_storage_key']
 
     @transaction.atomic
     def create(self, validated_data):

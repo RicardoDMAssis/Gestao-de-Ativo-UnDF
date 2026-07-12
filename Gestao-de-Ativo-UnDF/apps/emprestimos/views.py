@@ -33,11 +33,29 @@ class EmprestimoViewSet(viewsets.ModelViewSet):
             return Emprestimo.objects.none()
         
         # Servidor vê todos
-        if user.tipo_usuario == TipoUsuario.SERVIDOR:
-            return Emprestimo.objects.all().order_by('-created_at')
+        if getattr(user, 'is_servidor', False):
+            return Emprestimo.objects.all().select_related(
+                'ativo',
+                'usuario',
+                'autorizado_por',
+                'autorizado_por__usuario',
+                'ativo__setor',
+                'ativo__setor__campus',
+                'ativo__responsavel',
+                'ativo__responsavel__usuario'
+            ).order_by('-created_at')
         
         # Aluno/Professor vê apenas os seus
-        return Emprestimo.objects.filter(usuario=user).order_by('-created_at')
+        return Emprestimo.objects.filter(usuario=user).select_related(
+            'ativo',
+            'usuario',
+            'autorizado_por',
+            'autorizado_por__usuario',
+            'ativo__setor',
+            'ativo__setor__campus',
+            'ativo__responsavel',
+            'ativo__responsavel__usuario'
+        ).order_by('-created_at')
 
     def get_permissions(self):
         if self.action in ['devolver', 'aprovar', 'rejeitar', 'destroy']:
@@ -46,7 +64,7 @@ class EmprestimoViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action == 'create':
-            if self.request.user and self.request.user.is_authenticated and self.request.user.tipo_usuario == TipoUsuario.SERVIDOR:
+            if self.request.user and self.request.user.is_authenticated and getattr(self.request.user, 'is_servidor', False):
                 return EmprestimoCreateSerializer
             return SolicitacaoEmprestimoCreateSerializer
         elif self.action == 'devolver':
@@ -71,14 +89,19 @@ class EmprestimoViewSet(viewsets.ModelViewSet):
         emprestimo.save()
         
         # Libera o ativo para DISPONIVEL novamente, se não estiver avariado/etc.
-        if emprestimo.ativo.status == 'Emprestado':
+        if emprestimo.ativo.emprestado:
             from apps.ativos.services import AtivoService
             from apps.ativos.models import StatusAtivo
+            
+            ativo = emprestimo.ativo
+            ativo.emprestado = False
+            ativo.save()
+            
             AtivoService.transferir_ativo(
-                ativo=emprestimo.ativo,
-                novo_setor=emprestimo.ativo.setor,
+                ativo=ativo,
+                novo_setor=ativo.setor,
                 operador=request.user.get_servidor_profile(),
-                novo_status=StatusAtivo.DISPONIVEL,
+                novo_status=StatusAtivo.NOVO,
                 observacao=f"Cancelamento de Empréstimo ID {emprestimo.id}."
             )
 

@@ -14,18 +14,18 @@ class EmprestimoService:
         Realiza o empréstimo de um ativo para um usuário, validando a elegibilidade do ativo.
         """
         # 1. Valida elegibilidade do ativo
-        if not ativo.elegivel_emprestimo:
+        if not ativo.elegivel_emprestimo or (hasattr(ativo, 'ti_profile') and ativo.ti_profile and ativo.ti_profile.sala and ativo.ti_profile.sala.tipo == 'Laboratorio'):
             raise BusinessValidationError(
-                f"O ativo '{ativo.nome}' (Patrimônio: {ativo.serial_patrimonio}) não é elegível para empréstimo."
+                f"O ativo '{ativo.nome}' (Patrimônio: {ativo.serial_patrimonio}) não é elegível para empréstimo ou está alocado em um laboratório."
             )
             
         # 2. Valida status atual do ativo e Garantia de Posse Única
-        if ativo.status not in [StatusAtivo.DISPONIVEL, StatusAtivo.NOVO]:
+        if ativo.status != StatusAtivo.NOVO:
             raise BusinessValidationError(
                 f"O ativo '{ativo.nome}' não está disponível para empréstimo. Status atual: {ativo.get_status_display()}."
             )
         
-        if Emprestimo.objects.filter(ativo=ativo, status=StatusEmprestimo.ATIVO).exists():
+        if ativo.emprestado:
             raise BusinessValidationError(
                 f"O ativo '{ativo.nome}' já possui um empréstimo ativo."
             )
@@ -42,7 +42,7 @@ class EmprestimoService:
                 f"mas o ativo está no campus {ativo.setor.campus.sigla}."
             )
             
-        # 5. Cria o empréstimo
+        # 3. Cria o Empréstimo diretamente (ativo)
         emprestimo = Emprestimo.objects.create(
             ativo=ativo,
             usuario=usuario,
@@ -54,11 +54,14 @@ class EmprestimoService:
         )
         
         # 4. Atualiza o status do ativo para 'Emprestado' e registra a movimentação
+        ativo.emprestado = True
+        ativo.save()
+        
         AtivoService.transferir_ativo(
             ativo=ativo,
             novo_setor=ativo.setor, # Continua no mesmo setor do responsável, porém emprestado
             operador=autorizado_por,
-            novo_status=StatusAtivo.EMPRESTADO,
+            novo_status=StatusAtivo.NOVO,
             observacao=f"Ativo emprestado para {usuario.nome} (Matrícula: {usuario.matricula}). Empréstimo ID: {emprestimo.id}."
         )
         
@@ -88,11 +91,20 @@ class EmprestimoService:
         emprestimo.save()
         
         # 2. Retorna o status do ativo para 'Disponivel' e registra movimentação
+        ativo = emprestimo.ativo
+        ativo.emprestado = False
+        
+        novo_status_conservacao = StatusAtivo.NOVO
+        if status_conservacao in [StatusAtivo.AVARIADO, StatusAtivo.DESEMPOSSADO]:
+            novo_status_conservacao = status_conservacao
+        ativo.status = novo_status_conservacao
+        ativo.save()
+
         AtivoService.transferir_ativo(
-            ativo=emprestimo.ativo,
-            novo_setor=emprestimo.ativo.setor,
+            ativo=ativo,
+            novo_setor=ativo.setor,
             operador=devolvido_por,
-            novo_status=StatusAtivo.DISPONIVEL,
+            novo_status=novo_status_conservacao,
             observacao=f"Ativo devolvido. Empréstimo ID: {emprestimo.id}. Estado de conservação: {status_conservacao}."
         )
         
@@ -111,9 +123,14 @@ class EmprestimoService:
             )
             
         # 2. Valida status atual do ativo
-        if ativo.status not in [StatusAtivo.DISPONIVEL, StatusAtivo.NOVO]:
+        if ativo.status != StatusAtivo.NOVO:
             raise BusinessValidationError(
                 f"O ativo '{ativo.nome}' não está disponível para empréstimo. Status atual: {ativo.get_status_display()}."
+            )
+        
+        if ativo.emprestado:
+            raise BusinessValidationError(
+                f"O ativo '{ativo.nome}' já se encontra emprestado."
             )
         
         # Evita solicitações duplicadas se já existir ativo/pendente para este ativo
@@ -123,12 +140,12 @@ class EmprestimoService:
             )
 
         # 3. Consistência Temporal
-        if data_devolucao_prevista <= timezone.now():
-            raise BusinessValidationError("A data de devolução prevista deve ser maior que a data atual.")
+        data_solicitacao = timezone.now()
+        if data_devolucao_prevista < data_solicitacao:
+            raise BusinessValidationError("A data de devolução prevista não pode ser anterior à data atual.")
 
         # 4. Validação de Atividade Acadêmica para Alunos
-        from apps.usuarios.models import TipoUsuario
-        if usuario.tipo_usuario == TipoUsuario.ALUNO:
+        if getattr(usuario, 'is_aluno', False):
             from apps.atividades.models import AtividadeAcademica, StatusAtividade
             has_atividade = AtividadeAcademica.objects.filter(
                 aluno__usuario=usuario,
@@ -138,11 +155,11 @@ class EmprestimoService:
             if not has_atividade:
                 raise BusinessValidationError("Apenas alunos envolvidos em alguma atividade acadêmica ativa E aprovada podem solicitar empréstimos.")
 
-        # 5. Cria o empréstimo pendente
+        # 4. Cria solicitação pendente
         emprestimo = Emprestimo.objects.create(
             ativo=ativo,
             usuario=usuario,
-            autorizado_por=None,
+            data_solicitacao=data_solicitacao,
             data_devolucao_prevista=data_devolucao_prevista,
             status=StatusEmprestimo.PENDENTE,
             observacao_saida=observacao_saida
@@ -172,11 +189,15 @@ class EmprestimoService:
         emprestimo.save()
 
         # Atualiza status do ativo para Emprestado e registra movimentação
+        ativo = emprestimo.ativo
+        ativo.emprestado = True
+        ativo.save()
+
         AtivoService.transferir_ativo(
-            ativo=emprestimo.ativo,
-            novo_setor=emprestimo.ativo.setor,
+            ativo=ativo,
+            novo_setor=ativo.setor,
             operador=autorizado_por,
-            novo_status=StatusAtivo.EMPRESTADO,
+            novo_status=StatusAtivo.NOVO,
             observacao=f"Solicitação aprovada por {autorizado_por.usuario.nome}. Ativo emprestado para {emprestimo.usuario.nome}."
         )
 

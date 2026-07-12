@@ -6,6 +6,30 @@ export const api = axios.create({
   withCredentials: true,
 });
 
+// Cache em memória para requisições GET
+const cache = new Map<string, { data: any; expiry: number }>();
+const CACHE_TTL_MS = 5000; // Cache de 5 segundos
+
+api.interceptors.request.use((config) => {
+  if (config.method === 'get') {
+    const cacheKey = config.url + (config.params ? JSON.stringify(config.params) : '');
+    const cached = cache.get(cacheKey);
+    if (cached && cached.expiry > Date.now()) {
+      config.adapter = () => {
+        return Promise.resolve({
+          data: cached.data,
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          config,
+          request: {}
+        } as any);
+      };
+    }
+  }
+  return config;
+});
+
 // Flag para evitar múltiplas requisições de refresh simultâneas
 let isRefreshing = false;
 let failedQueue: any[] = [];
@@ -21,9 +45,21 @@ const processQueue = (error: any, token: string | null = null) => {
   failedQueue = [];
 };
 
-// Interceptor de resposta para tratar expiração de token (401)
+// Interceptor de resposta para tratar expiração de token (401) e salvar cache
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response.config.method === 'get') {
+      const cacheKey = response.config.url + (response.config.params ? JSON.stringify(response.config.params) : '');
+      cache.set(cacheKey, {
+        data: response.data,
+        expiry: Date.now() + CACHE_TTL_MS
+      });
+    } else {
+      // Limpa todo o cache em mutações (POST, PUT, PATCH, DELETE) para garantir dados frescos
+      cache.clear();
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
 

@@ -15,6 +15,7 @@ from apps.ativos.serializers import (
     AtivoTISerializer,
     AtivoTICreateUpdateSerializer,
     SoftwareSerializer,
+    SoftwareImageUploadSerializer,
     InstalacaoSoftwareSerializer,
     InstalacaoSoftwareCreateSerializer,
     MovimentacaoAtivoSerializer,
@@ -67,7 +68,7 @@ from apps.ativos.serializers import (
 )
 class AtivoViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
-    filterset_fields = ['status', 'elegivel_emprestimo', 'setor', 'responsavel', 'categoria']
+    filterset_fields = ['elegivel_emprestimo', 'setor', 'responsavel', 'categoria']
     search_fields = ['nome', 'serial_patrimonio', 'descricao', 'categoria']
 
     def get_queryset(self):
@@ -76,14 +77,49 @@ class AtivoViewSet(viewsets.ModelViewSet):
             return Ativo.objects.none()
 
         # Servidor vê todos
-        if user.tipo_usuario == TipoUsuario.SERVIDOR:
-            return Ativo.objects.all().order_by('nome')
+        if getattr(user, 'is_servidor', False):
+            queryset = Ativo.objects.all().select_related(
+                'setor',
+                'setor__campus',
+                'responsavel',
+                'responsavel__usuario',
+                'responsavel__setor',
+                'responsavel__setor__campus'
+            ).prefetch_related(
+                'ti_profile',
+                'ti_profile__sala',
+                'ti_profile__sala__campus'
+            ).order_by('nome')
+        else:
+            # Aluno e Professor veem apenas os elegíveis para empréstimo
+            queryset = Ativo.objects.filter(elegivel_emprestimo=True).select_related(
+                'setor',
+                'setor__campus',
+                'responsavel',
+                'responsavel__usuario',
+                'responsavel__setor',
+                'responsavel__setor__campus'
+            ).prefetch_related(
+                'ti_profile',
+                'ti_profile__sala',
+                'ti_profile__sala__campus'
+            ).order_by('nome')
 
-        # Aluno e Professor veem apenas os elegíveis para empréstimo
-        return Ativo.objects.filter(elegivel_emprestimo=True).order_by('nome')
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            if status_filter in ['disponiveis', 'Disponivel']:
+                queryset = queryset.filter(emprestado=False, status='Novo')
+            elif status_filter == 'Emprestado':
+                queryset = queryset.filter(emprestado=True)
+            elif status_filter == 'todos':
+                pass  # Não filtra por status
+            else:
+                queryset = queryset.filter(status=status_filter)
+
+        return queryset
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
+        if self.action in ['list', 'retrieve', 'entrar_fila', 'sair_fila']:
             return [IsAuthenticated()]
         return [IsAuthenticated(), IsServidor()]
 
@@ -163,6 +199,46 @@ class AtivoViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(tags=['Ativos - Fila de Espera'], summary="Entrar na fila de espera do ativo")
+    @action(detail=True, methods=['post'], url_path='entrar-fila')
+    def entrar_fila(self, request, pk=None):
+        ativo = self.get_object()
+        user = request.user
+        
+        if not ativo.elegivel_emprestimo:
+            return Response({'error': 'Este ativo não está disponível para empréstimos.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        from apps.emprestimos.models import FilaEmprestimo
+        if FilaEmprestimo.objects.filter(ativo=ativo, usuario=user).exists():
+            return Response({'error': 'Você já está na fila de espera deste ativo.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        FilaEmprestimo.objects.create(ativo=ativo, usuario=user)
+        
+        serializer = self.get_serializer(ativo)
+        return Response({
+            'success': 'Você entrou na fila de espera.',
+            'ativo': serializer.data
+        }, status=status.HTTP_200_OK)
+
+    @extend_schema(tags=['Ativos - Fila de Espera'], summary="Sair da fila de espera do ativo")
+    @action(detail=True, methods=['post'], url_path='sair-fila')
+    def sair_fila(self, request, pk=None):
+        ativo = self.get_object()
+        user = request.user
+        
+        from apps.emprestimos.models import FilaEmprestimo
+        entry = FilaEmprestimo.objects.filter(ativo=ativo, usuario=user).first()
+        if not entry:
+            return Response({'error': 'Você não está na fila de espera deste ativo.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        entry.delete()
+        
+        serializer = self.get_serializer(ativo)
+        return Response({
+            'success': 'Você saiu da fila de espera.',
+            'ativo': serializer.data
+        }, status=status.HTTP_200_OK)
+
 
 @extend_schema_view(
     list=extend_schema(tags=['Ativos de TI']),
@@ -193,6 +269,46 @@ class SoftwareViewSet(viewsets.ModelViewSet):
         if self.action in ['list', 'retrieve']:
             return [IsAuthenticated()]
         return [IsAuthenticated(), IsServidor()]
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='upload-imagem',
+        parser_classes=[parsers.MultiPartParser, parsers.FormParser],
+    )
+    def upload_imagem(self, request, pk=None):
+        """
+        Faz upload de uma imagem (png ou svg) para o software e salva a URL pública.
+        """
+        software = self.get_object()
+        serializer = SoftwareImageUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        file = serializer.validated_data['file']
+
+        if software.storage_key:
+            try:
+                SupabaseStorageService.delete_imagem(software.storage_key)
+            except Exception:
+                pass
+
+        public_url, storage_key = SupabaseStorageService.upload_software_imagem(
+            file=file,
+            software_id=software.pk,
+        )
+
+        software.imagem_url = public_url
+        software.storage_key = storage_key
+        software.save(update_fields=['imagem_url', 'storage_key'])
+
+        return Response(
+            {
+                'status': 'success',
+                'message': 'Imagem do software enviada com sucesso.',
+                'imagem_url': public_url,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 @extend_schema_view(
@@ -247,11 +363,11 @@ class SolicitacaoInstalacaoViewSet(viewsets.ModelViewSet):
             return SolicitacaoInstalacao.objects.none()
         
         # Servidores veem tudo
-        if user.tipo_usuario == TipoUsuario.SERVIDOR:
+        if getattr(user, 'is_servidor', False):
             return SolicitacaoInstalacao.objects.all().order_by('-created_at')
         
         # Professores veem as suas
-        if user.tipo_usuario == TipoUsuario.PROFESSOR:
+        if getattr(user, 'is_professor', False):
             return SolicitacaoInstalacao.objects.filter(solicitante=user).order_by('-created_at')
 
         return SolicitacaoInstalacao.objects.none()

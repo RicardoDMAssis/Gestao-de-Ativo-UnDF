@@ -19,7 +19,8 @@ import {
   ArrowLeft,
   Loader2,
   AlertCircle,
-  Info
+  Info,
+  Check
 } from "lucide-react";
 
 export default function AtivoDetailPage() {
@@ -39,6 +40,31 @@ export default function AtivoDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [solicitacaoErro, setSolicitacaoErro] = useState<string | null>(null);
   const [solicitacaoSucesso, setSolicitacaoSucesso] = useState(false);
+  const [filaLoading, setFilaLoading] = useState(false);
+
+  const handleEntrarFila = async () => {
+    setFilaLoading(true);
+    try {
+      const response = await api.post(`/ativos/${id}/entrar-fila/`);
+      setAtivo(response.data.ativo);
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Erro ao entrar na fila.");
+    } finally {
+      setFilaLoading(false);
+    }
+  };
+
+  const handleSairFila = async () => {
+    setFilaLoading(true);
+    try {
+      const response = await api.post(`/ativos/${id}/sair-fila/`);
+      setAtivo(response.data.ativo);
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Erro ao sair da fila.");
+    } finally {
+      setFilaLoading(false);
+    }
+  };
 
   const buscarAtivo = useCallback(async () => {
     if (!id) return;
@@ -126,7 +152,7 @@ export default function AtivoDetailPage() {
   const tiProfile = ativo.ti_profile;
   const isTI = ativo.categoria?.toLowerCase() === "ti" && tiProfile;
   const elegivel = ativo.elegivel_emprestimo;
-  const disponivel = ["Novo", "Disponivel"].includes(ativo.status);
+  const disponivel = !ativo.emprestado && ativo.status === "Novo";
   const podeSolicitar = user?.tipo_usuario !== "Servidor" && elegivel && disponivel;
 
   const fallbackImg = "https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=800&auto=format&fit=crop&q=80";
@@ -161,13 +187,13 @@ export default function AtivoDetailPage() {
             />
             <div className="absolute top-4 left-4 flex gap-2">
               <span className={`px-3 py-1 rounded-full text-xs font-bold shadow-sm ${
-                ativo.status === "Novo" || ativo.status === "Disponivel"
-                  ? "bg-green-100 text-green-800"
-                  : ativo.status === "Emprestado"
+                ativo.emprestado
                   ? "bg-amber-100 text-amber-800"
+                  : ativo.status === "Novo"
+                  ? "bg-green-100 text-green-800"
                   : "bg-red-100 text-red-800"
               }`}>
-                {ativo.status}
+                {ativo.emprestado ? "Emprestado" : ativo.status}
               </span>
               <span className="bg-zinc-900/80 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-sm backdrop-blur-sm">
                 {ativo.categoria}
@@ -185,6 +211,12 @@ export default function AtivoDetailPage() {
                 <h1 className="text-3xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50">
                   {ativo.nome}
                 </h1>
+                {ativo.emprestado && ativo.devolucao_prevista && (
+                  <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-lg text-xs font-bold text-amber-800 dark:text-amber-400">
+                    <Info className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>Previsão de Devolução: {new Date(ativo.devolucao_prevista).toLocaleDateString('pt-BR')}</span>
+                  </div>
+                )}
               </div>
 
               {ativo.descricao && (
@@ -278,18 +310,57 @@ export default function AtivoDetailPage() {
                   Solicitar Empréstimo
                 </button>
               ) : (
-                <div className="bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200/60 dark:border-zinc-800 rounded-xl p-4 flex gap-2">
-                  <Info className="w-5 h-5 text-zinc-400 mt-0.5 flex-shrink-0" />
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 space-y-1">
-                    <p className="font-semibold text-zinc-700 dark:text-zinc-300">Reserva indisponível para este item</p>
-                    {!elegivel && <p>Este ativo não está catalogado como elegível para empréstimo estudantil.</p>}
-                    {elegivel && !disponivel && (
-                      <p>O ativo já se encontra emprestado ou indisponível no momento (Status atual: {ativo.status}).</p>
-                    )}
-                    {user?.tipo_usuario === "Servidor" && (
-                      <p>Como Servidor, você pode realizar saídas diretas desse item na tela de Empréstimos ou gerenciá-lo.</p>
-                    )}
+                <div className="space-y-4">
+                  <div className="bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200/60 dark:border-zinc-800 rounded-xl p-4 flex gap-2">
+                    <Info className="w-5 h-5 text-zinc-400 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400 space-y-1">
+                      <p className="font-semibold text-zinc-700 dark:text-zinc-300">Reserva indisponível para este item</p>
+                      {!elegivel && <p>Este ativo não está catalogado como elegível para empréstimo estudantil.</p>}
+                      {elegivel && !disponivel && (
+                        <p>O ativo já se encontra emprestado ou indisponível no momento.</p>
+                      )}
+                      {user?.tipo_usuario === "Servidor" && (
+                        <p>Como Servidor, você pode realizar saídas diretas desse item na tela de Empréstimos ou gerenciá-lo.</p>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Fila de Espera */}
+                  {elegivel && ativo.emprestado && user?.tipo_usuario !== "Servidor" && (
+                    <div className="mt-4 pt-4 border-t border-zinc-150 dark:border-zinc-805/85 space-y-3">
+                      <div className="flex items-center justify-between text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+                        <span>Fila de Espera:</span>
+                        <span>{ativo.fila_espera_count || 0} na fila</span>
+                      </div>
+                      {ativo.usuario_na_fila_posicao ? (
+                        <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-xl p-3 flex flex-col gap-2.5">
+                          <div className="flex items-center gap-2 text-xs font-bold text-blue-900 dark:text-blue-400">
+                            <Check className="w-4 h-4 flex-shrink-0" />
+                            <span>Você está na fila de espera (Posição: {ativo.usuario_na_fila_posicao})</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleSairFila}
+                            disabled={filaLoading}
+                            className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-75"
+                          >
+                            {filaLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                            Sair da Fila de Espera
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleEntrarFila}
+                          disabled={filaLoading}
+                          className="w-full bg-blue-900 hover:bg-blue-950 text-white font-semibold py-2 px-4 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-75"
+                        >
+                          {filaLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                          Entrar na Fila de Espera
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -21,6 +21,7 @@ interface AuthState {
   login: (email: string, matricula: string) => Promise<void>;
   logout: () => Promise<void>;
   fetchUser: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 export const useAuth = create<AuthState>((set, get) => ({
@@ -54,6 +55,15 @@ export const useAuth = create<AuthState>((set, get) => ({
       set({ user: response.data, isAuthenticated: true, isLoading: false });
     } catch (error) {
       set({ user: null, isAuthenticated: false, isLoading: false });
+    }
+  },
+
+  refreshUser: async () => {
+    try {
+      const response = await api.get('/usuarios/me');
+      set({ user: response.data, isAuthenticated: true, isLoading: false, _hasFetched: true });
+    } catch (error) {
+      // Silencioso ou reset se falhar autenticação
     }
   },
 }));

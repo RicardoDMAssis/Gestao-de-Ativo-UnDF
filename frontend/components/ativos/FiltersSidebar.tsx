@@ -42,7 +42,7 @@ export const FiltersSidebar: React.FC<FiltersSidebarProps> = ({
     onChange({
       busca: filtros.busca,
       categoria: 'todas',
-      status: 'todos',
+      status: 'disponiveis',
       setor_id: 'todos',
       responsavel_id: 'todos',
     });
@@ -50,14 +50,14 @@ export const FiltersSidebar: React.FC<FiltersSidebarProps> = ({
 
   const hasActiveFilters =
     filtros.categoria !== 'todas' ||
-    filtros.status !== 'todos' ||
+    filtros.status !== 'disponiveis' ||
     filtros.setor_id !== 'todos' ||
     filtros.responsavel_id !== 'todos';
 
   // Count active filters for badge
   const activeFiltersCount = [
     filtros.categoria !== 'todas',
-    filtros.status !== 'todos',
+    filtros.status !== 'disponiveis',
     filtros.setor_id !== 'todos',
     filtros.responsavel_id !== 'todos'
   ].filter(Boolean).length;
@@ -79,28 +79,19 @@ export const FiltersSidebar: React.FC<FiltersSidebarProps> = ({
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Novo':
+      case 'disponiveis':
         return { dot: 'bg-green-500', activeBg: 'bg-green-600 border-green-700 text-white' };
-      case 'Disponivel':
-        return { dot: 'bg-blue-500', activeBg: 'bg-blue-600 border-blue-700 text-white' };
       case 'Emprestado':
         return { dot: 'bg-amber-500', activeBg: 'bg-amber-600 border-amber-700 text-white' };
-      case 'Avariado':
-        return { dot: 'bg-red-500', activeBg: 'bg-red-600 border-red-700 text-white' };
-      case 'Desempossado':
-        return { dot: 'bg-zinc-550', activeBg: 'bg-zinc-650 border-zinc-700 text-white' };
       default:
         return { dot: 'bg-zinc-400', activeBg: 'bg-zinc-800 border-zinc-900 text-white' };
     }
   };
 
-  const statusList: { valor: StatusAtivo | 'todos'; label: string }[] = [
+  const statusList: { valor: any; label: string }[] = [
+    { valor: 'disponiveis', label: 'Disponíveis' },
+    { valor: 'Emprestado', label: 'Emprestados' },
     { valor: 'todos', label: 'Todos' },
-    { valor: 'Novo', label: 'Novo' },
-    { valor: 'Disponivel', label: 'Disponível' },
-    { valor: 'Emprestado', label: 'Emprestado' },
-    { valor: 'Avariado', label: 'Avariado' },
-    { valor: 'Desempossado', label: 'Desempossado' },
   ];
 
   return (
@@ -172,7 +163,7 @@ export const FiltersSidebar: React.FC<FiltersSidebarProps> = ({
       {/* Status */}
       <div className="space-y-2">
         <label className="text-xs font-bold text-zinc-450 uppercase tracking-widest block">
-          Status de Conservação
+          Disponibilidade
         </label>
         <div className="flex flex-wrap gap-1.5">
           {statusList.map((opt) => {
