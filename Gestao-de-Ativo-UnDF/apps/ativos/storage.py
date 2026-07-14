@@ -5,7 +5,8 @@ Utiliza o client Python oficial `supabase-py` para comunicação com o
 Supabase Storage. As credenciais são lidas a partir das settings Django,
 que por sua vez as leem das variáveis de ambiente.
 
-Bucket padrão: settings.SUPABASE_STORAGE_BUCKET (ex: 'ativos-imagens')
+Bucket padrão: settings.SUPABASE_STORAGE_BUCKET (ex: 'ativos-imagem')
+
 O bucket deve ser criado manualmente no Supabase Dashboard com visibilidade
 pública (ou privada com geração de URLs assinadas conforme sua política).
 """

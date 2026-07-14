@@ -5,7 +5,7 @@ import { Ativo, Setor, Responsavel } from '@/types';
 import { SearchBar } from './SearchBar';
 import { FiltersSidebar } from './FiltersSidebar';
 import { AssetCard } from './AssetCard';
-import { api } from '@/lib/axios';
+import { api, formatApiError } from '@/lib/axios';
 import { useAuth } from '@/store/useAuth';
 import { Plus, Settings, X, Edit, Trash2, Cpu, MapPin, Loader2, AlertCircle, Check, Package } from 'lucide-react';
 import styles from '@/styles/AssetCatalog.module.css';
@@ -272,6 +272,8 @@ export const AssetCatalog: React.FC = () => {
           sala_detail: d.ti_profile.sala_detail,
         } : undefined,
         data_aquisicao: d.created_at?.slice(0, 10),
+        emprestado: d.emprestado,
+        elegivel_emprestimo: d.elegivel_emprestimo,
       }));
 
       setAtivos(mappedAtivos);
@@ -451,7 +453,7 @@ export const AssetCatalog: React.FC = () => {
       buscarAtivos();
     } catch (err: any) {
       console.error("Erro ao salvar ativo:", err);
-      setFormError(err.response?.data?.detail || "Erro ao salvar patrimônio. Verifique as informações.");
+      setFormError(formatApiError(err, "Erro ao salvar patrimônio. Verifique as informações."));
     } finally {
       setFormSubmitting(false);
     }
@@ -862,7 +864,6 @@ export const AssetCatalog: React.FC = () => {
                       className="w-full border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-500"
                     >
                       <option value="Novo">Novo</option>
-                      <option value="Disponivel">Disponível</option>
                       <option value="Avariado">Avariado</option>
                       <option value="Desempossado">Desempossado</option>
                     </select>

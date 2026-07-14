@@ -21,6 +21,8 @@ export interface Ativo {
   imagem_url?: string;
   dados_ti?: AtivoTI;
   data_aquisicao?: string;
+  emprestado?: boolean;
+  elegivel_emprestimo?: boolean;
 }
 
 export interface Setor {

@@ -6,7 +6,7 @@ from apps.ativos.models import Ativo, AtivoTI, Software, InstalacaoSoftware, Mov
 from apps.ativos.services import SoftwareService, AtivoService
 from apps.instituicao.serializers import SetorSerializer, SalaSerializer
 from apps.usuarios.serializers import ServidorSerializer
-from apps.instituicao.models import Setor
+from apps.instituicao.models import Setor, Sala
 
 # Campos editáveis diretamente pelo CRUD de Ativo.
 # imagem_url e storage_key são gerenciados exclusivamente via /upload_imagem/.
@@ -150,8 +150,18 @@ class AtivoImageUploadSerializer(serializers.Serializer):
     )
 
 
+class AtivoSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Ativo
+        fields = [
+            'id', 'serial_patrimonio', 'nome', 'descricao',
+            'categoria', 'status', 'emprestado', 'elegivel_emprestimo',
+            'created_at', 'updated_at'
+        ]
+
+
 class AtivoTISerializer(serializers.ModelSerializer):
-    ativo_detail = AtivoSerializer(source='ativo', read_only=True)
+    ativo_detail = AtivoSimpleSerializer(source='ativo', read_only=True)
     sala_detail = SalaSerializer(source='sala', read_only=True)
 
     class Meta:
@@ -184,16 +194,59 @@ class InstalacaoSoftwareSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class InstalacaoSoftwareCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = InstalacaoSoftware
-        fields = ['software', 'ativo_ti']
+class InstalacaoSoftwareCreateSerializer(serializers.Serializer):
+    software = serializers.PrimaryKeyRelatedField(queryset=Software.objects.all())
+    ativo_ti = serializers.PrimaryKeyRelatedField(queryset=AtivoTI.objects.all(), required=False, allow_null=True)
+    sala = serializers.PrimaryKeyRelatedField(queryset=Sala.objects.all(), required=False, allow_null=True)
+
+    def validate(self, data):
+        ativo_ti = data.get('ativo_ti')
+        sala = data.get('sala')
+        if not ativo_ti and not sala:
+            raise serializers.ValidationError("É necessário informar um Computador Individual (ativo_ti) ou uma Sala (sala).")
+        if ativo_ti and sala:
+            raise serializers.ValidationError("Não é possível especificar um Computador Individual e uma Sala simultaneamente.")
+        return data
 
     def create(self, validated_data):
         software = validated_data['software']
-        ativo_ti = validated_data['ativo_ti']
-        # Chama a camada de serviço para encapsular a regra de licenças
-        return SoftwareService.instalar_software(software=software, ativo_ti=ativo_ti)
+        ativo_ti = validated_data.get('ativo_ti')
+        sala = validated_data.get('sala')
+        
+        if sala:
+            computadores = AtivoTI.objects.filter(sala=sala)
+            if not computadores.exists():
+                raise serializers.ValidationError({"sala": f"Não existem computadores de TI vinculados à sala '{sala.numero}'."})
+            
+            # Valida se há licenças suficientes
+            instalacoes_ativas = InstalacaoSoftware.objects.filter(software=software).count()
+            licencas_disponiveis = software.total_licencas_compradas - instalacoes_ativas
+            
+            # Computadores da sala que já não têm o software instalado
+            computadores_a_instalar = []
+            for comp in computadores:
+                if not InstalacaoSoftware.objects.filter(software=software, ativo_ti=comp).exists():
+                    computadores_a_instalar.append(comp)
+            
+            if not computadores_a_instalar:
+                # Todos já têm o software instalado, retorna um objeto dummy ou o primeiro existente
+                existente = InstalacaoSoftware.objects.filter(software=software, ativo_ti=computadores[0]).first()
+                return existente
+                
+            if len(computadores_a_instalar) > licencas_disponiveis:
+                raise serializers.ValidationError({
+                    "sala": f"Não há licenças suficientes. Computadores a instalar: {len(computadores_a_instalar)}, Licenças disponíveis: {licencas_disponiveis}."
+                })
+            
+            instalacoes = []
+            for comp in computadores_a_instalar:
+                inst = SoftwareService.instalar_software(software=software, ativo_ti=comp)
+                instalacoes.append(inst)
+            
+            return instalacoes[0]
+        else:
+            return SoftwareService.instalar_software(software=software, ativo_ti=ativo_ti)
+
 
 
 class MovimentacaoAtivoSerializer(serializers.ModelSerializer):
@@ -214,10 +267,17 @@ class AtivoTransferSerializer(serializers.Serializer):
 
 from apps.ativos.models import SolicitacaoInstalacao, StatusSolicitacaoInstalacao
 from apps.usuarios.serializers import UsuarioSerializer
+from apps.usuarios.models import Usuario
+
+class UsuarioSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Usuario
+        fields = ['id', 'nome', 'email', 'matricula', 'tipo_usuario']
+
 
 class SolicitacaoInstalacaoSerializer(serializers.ModelSerializer):
     software_detail = SoftwareSerializer(source='software', read_only=True)
-    solicitante_detail = UsuarioSerializer(source='solicitante', read_only=True)
+    solicitante_detail = UsuarioSimpleSerializer(source='solicitante', read_only=True)
     sala_detail = SalaSerializer(source='sala', read_only=True)
     ativo_ti_detail = AtivoTISerializer(source='ativo_ti', read_only=True)
 

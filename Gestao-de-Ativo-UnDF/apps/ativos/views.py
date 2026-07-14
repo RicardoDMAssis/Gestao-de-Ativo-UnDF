@@ -245,7 +245,15 @@ class AtivoViewSet(viewsets.ModelViewSet):
     retrieve=extend_schema(tags=['Ativos de TI']),
 )
 class AtivoTIViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = AtivoTI.objects.all().order_by('ativo__nome')
+    queryset = AtivoTI.objects.all().select_related(
+        'ativo',
+        'ativo__setor',
+        'ativo__setor__campus',
+        'ativo__responsavel',
+        'ativo__responsavel__usuario',
+        'sala',
+        'sala__campus'
+    ).order_by('ativo__nome')
     permission_classes = [IsAuthenticated]
     filterset_fields = ['marca', 'sistema_operacional', 'sala']
     search_fields = ['marca', 'sistema_operacional', 'numero_serie', 'ativo__nome', 'ativo__serial_patrimonio']
@@ -319,7 +327,17 @@ class SoftwareViewSet(viewsets.ModelViewSet):
 )
 class InstalacaoSoftwareViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'delete', 'head', 'options']
-    queryset = InstalacaoSoftware.objects.all().order_by('-data_instalacao')
+    queryset = InstalacaoSoftware.objects.all().select_related(
+        'software',
+        'ativo_ti',
+        'ativo_ti__ativo',
+        'ativo_ti__ativo__setor',
+        'ativo_ti__ativo__setor__campus',
+        'ativo_ti__ativo__responsavel',
+        'ativo_ti__ativo__responsavel__usuario',
+        'ativo_ti__sala',
+        'ativo_ti__sala__campus'
+    ).order_by('-data_instalacao')
     filterset_fields = ['software', 'ativo_ti']
     search_fields = ['software__nome', 'ativo_ti__ativo__nome', 'ativo_ti__ativo__serial_patrimonio']
 
@@ -362,13 +380,28 @@ class SolicitacaoInstalacaoViewSet(viewsets.ModelViewSet):
         if not user or not user.is_authenticated:
             return SolicitacaoInstalacao.objects.none()
         
+        qs = SolicitacaoInstalacao.objects.all().select_related(
+            'software',
+            'solicitante',
+            'sala',
+            'sala__campus',
+            'ativo_ti',
+            'ativo_ti__ativo',
+            'ativo_ti__ativo__setor',
+            'ativo_ti__ativo__setor__campus',
+            'ativo_ti__ativo__responsavel',
+            'ativo_ti__ativo__responsavel__usuario',
+            'ativo_ti__sala',
+            'ativo_ti__sala__campus'
+        )
+
         # Servidores veem tudo
         if getattr(user, 'is_servidor', False):
-            return SolicitacaoInstalacao.objects.all().order_by('-created_at')
+            return qs.order_by('-created_at')
         
         # Professores veem as suas
         if getattr(user, 'is_professor', False):
-            return SolicitacaoInstalacao.objects.filter(solicitante=user).order_by('-created_at')
+            return qs.filter(solicitante=user).order_by('-created_at')
 
         return SolicitacaoInstalacao.objects.none()
 

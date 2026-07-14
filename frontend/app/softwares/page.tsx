@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Layout } from "@/components/Layout";
-import { api } from "@/lib/axios";
+import { api, formatApiError } from "@/lib/axios";
 import { useAuth } from "@/store/useAuth";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import {
@@ -69,6 +69,8 @@ export default function SoftwaresPage() {
   const [selectedSoftwareId, setSelectedSoftwareId] = useState("");
   const [selectedAtivoTIId, setSelectedAtivoTIId] = useState("");
   const [computerSearch, setComputerSearch] = useState("");
+  const [instTipoDestino, setInstTipoDestino] = useState<"individual" | "laboratorio">("individual");
+  const [instSalaId, setInstSalaId] = useState("");
 
   // Form Solicitação de Instalação (Professor)
   const [modalSolicitacaoOpen, setModalSolicitacaoOpen] = useState(false);
@@ -94,11 +96,11 @@ export default function SoftwaresPage() {
     setError(null);
     try {
       const [resInstalacoes, resSoftwares, resAtivosTI, resSalas, resSolicitacoes] = await Promise.all([
-        api.get("/instalacoes-software/"),
-        api.get("/softwares/"),
-        api.get("/ativos-ti/"),
-        api.get("/salas/"),
-        api.get("/solicitacoes-instalacao/")
+        api.get("/instalacoes-software/?page_size=1000"),
+        api.get("/softwares/?page_size=1000"),
+        api.get("/ativos-ti/?page_size=1000"),
+        api.get("/salas/?page_size=1000"),
+        api.get("/solicitacoes-instalacao/?page_size=1000")
       ]);
       setInstalacoes(resInstalacoes.data.results || resInstalacoes.data || []);
       setSoftwares(resSoftwares.data.results || resSoftwares.data || []);
@@ -177,7 +179,7 @@ export default function SoftwaresPage() {
       setSucesso(editingSoftware ? "Software editado com sucesso!" : "Software cadastrado com sucesso!");
       carregarDados();
     } catch (err: any) {
-      setErrorSoftware(err.response?.data?.detail || err.message || "Erro ao salvar.");
+      setErrorSoftware(formatApiError(err, "Erro ao salvar."));
     } finally {
       setSubmittingSoftware(false);
     }
@@ -190,23 +192,37 @@ export default function SoftwaresPage() {
     setErrorInstalacao(null);
 
     try {
-      if (!selectedSoftwareId || !selectedAtivoTIId) {
-        throw new Error("Selecione o software e o computador de TI.");
+      if (!selectedSoftwareId) {
+        throw new Error("Selecione o software.");
       }
 
-      await api.post("/instalacoes-software/", {
-        software: parseInt(selectedSoftwareId),
-        ativo_ti: parseInt(selectedAtivoTIId)
-      });
+      const payload: any = {
+        software: parseInt(selectedSoftwareId)
+      };
+
+      if (instTipoDestino === "individual") {
+        if (!selectedAtivoTIId) {
+          throw new Error("Selecione o computador de TI.");
+        }
+        payload.ativo_ti = parseInt(selectedAtivoTIId);
+      } else {
+        if (!instSalaId) {
+          throw new Error("Selecione o laboratório.");
+        }
+        payload.sala = parseInt(instSalaId);
+      }
+
+      await api.post("/instalacoes-software/", payload);
 
       setModalInstalacaoOpen(false);
       setSelectedSoftwareId("");
       setSelectedAtivoTIId("");
       setComputerSearch("");
+      setInstSalaId("");
       setSucesso("Instalação registrada com sucesso!");
       carregarDados();
     } catch (err: any) {
-      setErrorInstalacao(err.response?.data?.detail || err.message || "Erro ao registrar.");
+      setErrorInstalacao(formatApiError(err, "Erro ao registrar."));
     } finally {
       setSubmittingInstalacao(false);
     }
@@ -368,6 +384,8 @@ export default function SoftwaresPage() {
     setSelectedAtivoTIId(id);
     setComputerSearch(`${name} (${serial})`);
     setSelectedSoftwareId("");
+    setInstTipoDestino("individual");
+    setInstSalaId("");
     setErrorInstalacao(null);
     setModalInstalacaoOpen(true);
   };
@@ -431,6 +449,8 @@ export default function SoftwaresPage() {
                   setSelectedAtivoTIId("");
                   setComputerSearch("");
                   setSelectedSoftwareId("");
+                  setInstTipoDestino("individual");
+                  setInstSalaId("");
                   setErrorInstalacao(null);
                   setModalInstalacaoOpen(true);
                 }}
@@ -1234,64 +1254,116 @@ export default function SoftwaresPage() {
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300">Buscar Computador (Patrimônio)</label>
-                <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={computerSearch}
-                    onChange={(e) => setComputerSearch(e.target.value)}
-                    className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg pl-9 pr-3 py-2 text-sm bg-white dark:bg-zinc-900 outline-none focus:border-primary text-foreground"
-                    placeholder="Nome do ativo ou patrimônio..."
-                  />
+              {/* Tipo de Destino */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300 block">Tipo de Destino</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-foreground">
+                    <input
+                      type="radio"
+                      name="instTipoDestino"
+                      checked={instTipoDestino === "individual"}
+                      onChange={() => setInstTipoDestino("individual")}
+                      className="text-blue-900"
+                    />
+                    Computador Individual
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-foreground">
+                    <input
+                      type="radio"
+                      name="instTipoDestino"
+                      checked={instTipoDestino === "laboratorio"}
+                      onChange={() => setInstTipoDestino("laboratorio")}
+                      className="text-blue-900"
+                    />
+                    Laboratório Completo
+                  </label>
                 </div>
-                {computerSearch.trim() && !selectedAtivoTIId && (
-                  <div className="border border-slate-200 dark:border-zinc-800 rounded-lg max-h-40 overflow-y-auto bg-white dark:bg-zinc-900 shadow-md divide-y divide-slate-100 dark:divide-zinc-800 mt-1">
-                    {filteredAtivosTI.length === 0 ? (
-                      <div className="px-4 py-2.5 text-xs text-slate-500 dark:text-zinc-400">Nenhum computador encontrado.</div>
-                    ) : (
-                      filteredAtivosTI.map((a) => {
-                        const aId = String(a.ativo_detail?.id || a.ativo || a.ativo_id || "");
-                        const aName = a.ativo_detail?.nome || a.ativo?.nome || "Computador";
-                        const aSerial = a.ativo_detail?.serial_patrimonio || a.ativo?.serial_patrimonio || "—";
-                        return (
-                          <button
-                            key={aId}
-                            type="button"
-                            onClick={() => {
-                              setSelectedAtivoTIId(aId);
-                              setComputerSearch(`${aName} (${aSerial})`);
-                            }}
-                            className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-sm flex items-center justify-between cursor-pointer"
-                          >
-                            <span className="font-medium text-foreground">{aName}</span>
-                            <span className="text-xs text-slate-500 dark:text-zinc-400">Patrimônio: {aSerial}</span>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
-                {selectedAtivoTIId && (
-                  <div className="flex items-center justify-between bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/30 rounded-lg px-3 py-2 mt-1">
-                    <span className="text-sm font-medium text-blue-900 dark:text-blue-300 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-blue-700 dark:text-blue-400" />
-                      Computador selecionado
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedAtivoTIId("");
-                        setComputerSearch("");
-                      }}
-                      className="text-xs text-red-650 hover:text-red-800 font-semibold cursor-pointer"
-                    >
-                      Remover
-                    </button>
-                  </div>
-                )}
               </div>
+
+              {/* Se Individual: busca de computadores */}
+              {instTipoDestino === "individual" && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300">Buscar Computador (Patrimônio)</label>
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={computerSearch}
+                      onChange={(e) => setComputerSearch(e.target.value)}
+                      className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg pl-9 pr-3 py-2 text-sm bg-white dark:bg-zinc-900 outline-none focus:border-primary text-foreground"
+                      placeholder="Nome do ativo ou patrimônio..."
+                    />
+                  </div>
+                  {computerSearch.trim() && !selectedAtivoTIId && (
+                    <div className="border border-slate-200 dark:border-zinc-800 rounded-lg max-h-40 overflow-y-auto bg-white dark:bg-zinc-900 shadow-md divide-y divide-slate-100 dark:divide-zinc-800 mt-1">
+                      {filteredAtivosTI.length === 0 ? (
+                        <div className="px-4 py-2.5 text-xs text-slate-500 dark:text-zinc-400">Nenhum computador encontrado.</div>
+                      ) : (
+                        filteredAtivosTI.map((a) => {
+                          const aId = String(a.ativo_detail?.id || a.ativo || a.ativo_id || "");
+                          const aName = a.ativo_detail?.nome || a.ativo?.nome || "Computador";
+                          const aSerial = a.ativo_detail?.serial_patrimonio || a.ativo?.serial_patrimonio || "—";
+                          return (
+                            <button
+                              key={aId}
+                              type="button"
+                              onClick={() => {
+                                setSelectedAtivoTIId(aId);
+                                setComputerSearch(`${aName} (${aSerial})`);
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors text-sm flex items-center justify-between cursor-pointer"
+                            >
+                              <span className="font-medium text-foreground">{aName}</span>
+                              <span className="text-xs text-slate-500 dark:text-zinc-400">Patrimônio: {aSerial}</span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                  {selectedAtivoTIId && (
+                    <div className="flex items-center justify-between bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/30 rounded-lg px-3 py-2 mt-1">
+                      <span className="text-sm font-medium text-blue-900 dark:text-blue-300 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-blue-700 dark:text-blue-400" />
+                        Computador selecionado
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAtivoTIId("");
+                          setComputerSearch("");
+                        }}
+                        className="text-xs text-red-650 hover:text-red-800 font-semibold cursor-pointer"
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Se Laboratório: select de salas */}
+              {instTipoDestino === "laboratorio" && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600 dark:text-zinc-300">Selecionar Laboratório *</label>
+                  <select
+                    required
+                    value={instSalaId}
+                    onChange={(e) => setInstSalaId(e.target.value)}
+                    className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-zinc-900 outline-none focus:border-primary text-foreground"
+                  >
+                    <option value="">Selecione o laboratório...</option>
+                    {salas
+                      .filter((s) => s.tipo === "Laboratorio")
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.tipo} {s.numero} ({s.campus_detail?.sigla || ''})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
 
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100 dark:border-zinc-800 mt-6">
                 <button

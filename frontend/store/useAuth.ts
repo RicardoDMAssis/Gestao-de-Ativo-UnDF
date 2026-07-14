@@ -11,6 +11,8 @@ export interface User {
   aluno_profile?: any;
   professor_profile?: any;
   servidor_profile?: any;
+  nome_social?: string;
+  foto_url?: string;
 }
 
 interface AuthState {
@@ -55,6 +57,13 @@ export const useAuth = create<AuthState>((set, get) => ({
       set({ user: response.data, isAuthenticated: true, isLoading: false });
     } catch (error) {
       set({ user: null, isAuthenticated: false, isLoading: false });
+      // Se falhar a busca (token inválido/expirado ou backend offline), 
+      // limpa os cookies para evitar loops de redirecionamento no middleware
+      try {
+        await api.post('/auth/logout');
+      } catch (e) {
+        // Ignora erros de rede caso o servidor Next.js esteja inacessível
+      }
     }
   },
 

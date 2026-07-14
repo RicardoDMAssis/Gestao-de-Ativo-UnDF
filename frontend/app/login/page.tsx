@@ -6,6 +6,7 @@ import { useAuth } from '@/store/useAuth';
 import { LogIn, Mail, Hash, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { UnDFLogo } from '@/components/UnDFLogo';
+import { formatApiError } from '@/lib/axios';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function LoginPage() {
       await login(email, matricula);
       router.push('/perfil');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erro ao realizar login. Verifique suas credenciais.');
+      setError(formatApiError(err, 'Erro ao realizar login. Verifique suas credenciais.'));
     } finally {
       setLoading(false);
     }

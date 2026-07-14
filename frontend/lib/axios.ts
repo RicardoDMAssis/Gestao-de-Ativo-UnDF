@@ -63,8 +63,8 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Se o erro for 401 (Não Autorizado) e não for uma tentativa de refresh
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Se o erro for 401 (Não Autorizado) e não for uma tentativa de refresh/login
+    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/auth/login')) {
       if (isRefreshing) {
         // Se já estiver atualizando, coloca a requisição na fila
         return new Promise(function (resolve, reject) {
@@ -105,3 +105,85 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export function formatApiError(err: any, fallbackMessage: string = "Ocorreu um erro."): string {
+  if (!err?.response?.data) {
+    return err?.message || fallbackMessage;
+  }
+  
+  const data = err.response.data;
+  
+  // 1. Se for uma mensagem simples no detail, error ou message
+  if (typeof data.detail === "string") {
+    return data.detail;
+  }
+  if (typeof data.error === "string") {
+    return data.error;
+  }
+  if (typeof data.message === "string") {
+    return data.message;
+  }
+  
+  // 2. Se for um objeto de erros de validação (DRF Serializer errors)
+  if (typeof data === "object") {
+    const errorStrings: string[] = [];
+    
+    for (const [key, value] of Object.entries(data)) {
+      if (key === "non_field_errors") {
+        if (Array.isArray(value)) {
+          errorStrings.push(value.join(" "));
+        } else {
+          errorStrings.push(String(value));
+        }
+        continue;
+      }
+      
+      const fieldName = formatFieldName(key);
+      if (Array.isArray(value)) {
+        errorStrings.push(`${fieldName}: ${value.join(" ")}`);
+      } else if (typeof value === "object" && value !== null) {
+        // Erros aninhados (ex: ti_profile)
+        for (const [subKey, subVal] of Object.entries(value)) {
+          const subFieldName = formatFieldName(subKey);
+          if (Array.isArray(subVal)) {
+            errorStrings.push(`${fieldName} (${subFieldName}): ${subVal.join(" ")}`);
+          } else {
+            errorStrings.push(`${fieldName} (${subFieldName}): ${String(subVal)}`);
+          }
+        }
+      } else {
+        errorStrings.push(`${fieldName}: ${String(value)}`);
+      }
+    }
+    
+    if (errorStrings.length > 0) {
+      return errorStrings.join("\n");
+    }
+  }
+  
+  return fallbackMessage;
+}
+
+function formatFieldName(field: string): string {
+  const mapping: Record<string, string> = {
+    nome: "Nome",
+    serial_patrimonio: "Código Patrimonial (Serial)",
+    descricao: "Descrição",
+    categoria: "Categoria",
+    status: "Status",
+    responsavel: "Responsável",
+    setor: "Setor",
+    ti_profile: "Especificações de TI",
+    marca: "Marca",
+    memoria_ram_gb: "Memória RAM",
+    armazenamento_gb: "Armazenamento",
+    sistema_operacional: "Sistema Operacional",
+    sala: "Sala",
+    software: "Software",
+    ativo_ti: "Computador de TI",
+    email: "E-mail",
+    matricula: "Matrícula",
+    password: "Senha"
+  };
+  return mapping[field] || field;
+}

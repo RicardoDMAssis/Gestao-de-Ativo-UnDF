@@ -173,7 +173,8 @@ CORS_ALLOW_CREDENTIALS = True
 SUPABASE_URL = env('SUPABASE_URL')
 SUPABASE_PUBLISHABLE_KEY = env('SUPABASE_PUBLISHABLE_KEY')
 SUPABASE_SECRET_KEY = env('SUPABASE_SECRET_KEY')
-SUPABASE_STORAGE_BUCKET = env('SUPABASE_STORAGE_BUCKET', default='ativos-imagens')
+SUPABASE_STORAGE_BUCKET = env('SUPABASE_STORAGE_BUCKET', default='ativos-imagem')
+
 
 
 # ─── Swagger / OpenAPI ────────────────────────────────────────────────────────

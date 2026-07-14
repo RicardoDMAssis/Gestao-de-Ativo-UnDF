@@ -512,13 +512,13 @@ export default function EmprestimosPage() {
           emprestimo={detalhesAlvo}
           onClose={() => setDetalhesAlvo(null)}
           isServidor={isServidor}
-          onAprovar={(id) => {
+          onAprovar={() => {
+            setAprovarAlvo(detalhesAlvo);
             setDetalhesAlvo(null);
-            handleAprovar(id);
           }}
-          onRejeitar={(id) => {
+          onRejeitar={() => {
+            setRejeitarAlvo(detalhesAlvo);
             setDetalhesAlvo(null);
-            handleRejeitar(id);
           }}
           onDevolver={(emp) => {
             setDetalhesAlvo(null);

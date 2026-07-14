@@ -18,7 +18,8 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY}
       - SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY}
-      - SUPABASE_STORAGE_BUCKET=${SUPABASE_STORAGE_BUCKET:-ativos-imagens}
+      - SUPABASE_STORAGE_BUCKET=${SUPABASE_STORAGE_BUCKET:-ativos-imagem}
+
       # ─── JWT ───────────────────────────────────────────────────────────────
       - JWT_SECRET_KEY=django-insecure-local-development-secret-key-12345
       - JWT_ACCESS_TOKEN_LIFETIME_MINUTES=60
