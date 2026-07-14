@@ -451,10 +451,10 @@ export default function AtividadesPage() {
                     <div className="border border-slate-200 rounded-lg max-h-40 overflow-y-auto bg-white shadow-md divide-y divide-slate-100 mt-1">
                       {alunos.map((al) => (
                         <button
-                          key={al.usuario_id}
+                          key={al.usuario.id}
                           type="button"
                           onClick={() => {
-                            setSelectedAlunoId(String(al.usuario_id));
+                            setSelectedAlunoId(String(al.usuario.id));
                             setAlunoSearch(`${al.usuario?.nome} (${al.usuario?.matricula})`);
                             setAlunos([]);
                           }}
