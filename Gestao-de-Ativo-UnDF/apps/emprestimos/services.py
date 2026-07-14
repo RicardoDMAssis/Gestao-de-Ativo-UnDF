@@ -159,7 +159,6 @@ class EmprestimoService:
         emprestimo = Emprestimo.objects.create(
             ativo=ativo,
             usuario=usuario,
-            data_solicitacao=data_solicitacao,
             data_devolucao_prevista=data_devolucao_prevista,
             status=StatusEmprestimo.PENDENTE,
             observacao_saida=observacao_saida
